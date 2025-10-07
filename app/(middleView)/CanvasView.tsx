@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable, DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import CanvasBlock from "./_components/CanvasBlock";
 import { useDndMonitor } from "@dnd-kit/core";
@@ -12,6 +12,8 @@ import type { BlockType, SignalType } from "../../lib/ottl/types";
 export default function CanvasView() {
   const blocks = usePipelineStore((s) => s.blocks);
   const addBlock = usePipelineStore((s) => s.addBlock);
+  const removeBlock = usePipelineStore((s) => s.removeBlock);
+  const updateBlock = usePipelineStore((s) => s.updateBlock);
   const reorder = usePipelineStore((s) => s.reorderBlocks);
 
   const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" });
@@ -56,7 +58,20 @@ export default function CanvasView() {
         <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
           <section className="space-y-3">
             {blocks.map((b, idx) => (
-              <CanvasBlock key={b.id} id={b.id} index={idx + 1} type={b.type} signal={b.signal} icon={iconForType(b.type)} />
+              <CanvasBlock
+                key={b.id}
+                id={b.id}
+                index={idx + 1}
+                type={b.type}
+                signal={b.signal}
+                icon={iconForType(b.type)}
+                onDelete={() => removeBlock(b.id)}
+                onDuplicate={() => {
+                  const id = `${b.type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
+                  addBlock({ ...b, id });
+                }}
+                onConfigure={() => updateBlock(b.id, { /* config modal to wire later */ })}
+              />
             ))}
           </section>
         </SortableContext>
