@@ -67,14 +67,28 @@ export default function TelemetryEditor() {
 
   return (
     <section className="h-full min-h-0 flex flex-col overflow-hidden">
-        {showHeader && (
-          <section className="flex items-center gap-2">
-            <p className="text-sm">Signal:</p>
-            <Badge aria-live="polite" aria-atomic="true">{signalLabel}</Badge>
-          </section>
-        )}
+          {showHeader && (
+            <section className="flex w-full border-b items-center gap-2 p-4">
+              <p className="text-sm">Signal type:</p>
+              <Badge
+                variant={
+                  signal === "traces"
+                    ? "traces"
+                    : signal === "metrics"
+                    ? "metrics"
+                    : signal === "logs"
+                    ? "logs"
+                    : "unknown"
+                }
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {signalLabel}
+              </Badge>
+            </section>
+          )}
         {useTelemetryStore.getState().parseError && (
-          <p role="alert" className="text-sm text-destructive flex items-center gap-2">
+          <p role="alert" className="text-sm text-destructive flex items-center gap-2 p-4 border-b">
             <AlertCircle className="size-4" /> {useTelemetryStore.getState().parseError}
           </p>
         )}
