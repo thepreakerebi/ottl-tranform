@@ -2,6 +2,8 @@
 import { useState } from "react";
 import PanelBlock from "./_components/PanelBlock";
 import { ChevronDown, ChevronUp, PlusSquare, MinusSquare, Pencil, VenetianMask, GitBranch, Hash, ScanText, Ruler, Sigma, Tags } from "lucide-react";
+import { usePipelineStore } from "../../lib/stores/pipelineStore";
+import type { Block } from "../../lib/ottl/types";
 
 type BlockGroup = {
   title: string;
@@ -44,6 +46,41 @@ const groups: BlockGroup[] = [
 
 export default function PanelBlocksSection() {
   const [expanded, setExpanded] = useState(true);
+  const addBlock = usePipelineStore((s) => s.addBlock);
+
+  function createBlock(type: string, groupTitle: string): Block {
+    const id = `${type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
+    const signal =
+      groupTitle === "Traces" ? "traces" : groupTitle === "Metrics" ? "metrics" : groupTitle === "Logs" ? "logs" : "general";
+    return {
+      id,
+      type: type as Block["type"],
+      signal,
+      config: {},
+      enabled: true,
+    };
+  }
+
+  function onSelectBlock(name: string, groupTitle: string) {
+    // Map UI label → BlockType
+    const map: Record<string, string> = {
+      "Add attribute": "addAttribute",
+      "Remove attribute": "removeAttribute",
+      "Rename attribute": "renameAttribute",
+      "Mask attribute": "maskAttribute",
+      "Edit parent/child": "editParentChild",
+      "Edit trace/span ID": "editTraceOrSpanId",
+      "Rename field": "renameLogField",
+      "Mask field": "maskLogField",
+      "Unit conversion": "unitConversion",
+      "Aggregate series": "aggregateSeries",
+      "Edit labels": "editLabels",
+    };
+    const type = map[name];
+    if (!type) return;
+    const block = createBlock(type, groupTitle);
+    addBlock(block);
+  }
 
   return (
     <section aria-label="Transformation blocks" className="border-t overflow-auto" style={{ maxHeight: "50vh" }}>
@@ -67,7 +104,13 @@ export default function PanelBlocksSection() {
               <h3 className="text-xs font-semibold text-muted-foreground">{g.title}</h3>
               <ul className="space-y-1">
                 {g.items.map((b) => (
-                  <PanelBlock key={b.name} icon={b.icon} name={b.name} description={b.description} />
+                  <PanelBlock
+                    key={b.name}
+                    icon={b.icon}
+                    name={b.name}
+                    description={b.description}
+                    onSelect={() => onSelectBlock(b.name, g.title)}
+                  />
                 ))}
               </ul>
             </section>
