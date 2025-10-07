@@ -1,6 +1,7 @@
 "use client";
 
-import { useDroppable } from "@dnd-kit/core";
+import { useDroppable, DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import CanvasBlock from "./_components/CanvasBlock";
 import { useDndMonitor } from "@dnd-kit/core";
@@ -11,6 +12,7 @@ import type { BlockType, SignalType } from "../../lib/ottl/types";
 export default function CanvasView() {
   const blocks = usePipelineStore((s) => s.blocks);
   const addBlock = usePipelineStore((s) => s.addBlock);
+  const reorder = usePipelineStore((s) => s.reorderBlocks);
 
   const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" });
 
@@ -26,7 +28,23 @@ export default function CanvasView() {
     },
   });
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
   return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={(event) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        const oldIndex = blocks.findIndex((b) => b.id === String(active.id));
+        const newIndex = blocks.findIndex((b) => b.id === String(over.id));
+        if (oldIndex === -1 || newIndex === -1) return;
+        if (oldIndex !== newIndex) reorder(oldIndex, newIndex);
+      }}
+    >
     <section
       ref={setNodeRef}
       aria-label="Canvas"
@@ -35,13 +53,16 @@ export default function CanvasView() {
       {blocks.length === 0 ? (
         <p className="text-sm text-muted-foreground">Drag blocks here or click from the left panel to add.</p>
       ) : (
-        <section className="space-y-3">
-          {blocks.map((b, idx) => (
-            <CanvasBlock key={b.id} id={b.id} index={idx + 1} type={b.type} signal={b.signal} icon={iconForType(b.type)} />
-          ))}
-        </section>
+        <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+          <section className="space-y-3">
+            {blocks.map((b, idx) => (
+              <CanvasBlock key={b.id} id={b.id} index={idx + 1} type={b.type} signal={b.signal} icon={iconForType(b.type)} />
+            ))}
+          </section>
+        </SortableContext>
       )}
     </section>
+    </DndContext>
   );
 }
 

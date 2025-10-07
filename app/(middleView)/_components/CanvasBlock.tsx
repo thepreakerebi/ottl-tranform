@@ -21,7 +21,7 @@ type Props = {
 export default function CanvasBlock({ id, index, type, signal, icon, configuredSummary, onConfigure, onDuplicate, onDelete }: Props) {
   const title = humanizeType(type);
   const description = configuredSummary || typeToDescription[type] || "";
-  const sortable = useSortable({ id: `canvas-${id}` });
+  const sortable = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
@@ -29,7 +29,7 @@ export default function CanvasBlock({ id, index, type, signal, icon, configuredS
 
   return (
     <article aria-label={title} ref={sortable.setNodeRef} style={style} className="rounded-lg bg-secondary text-secondary-foreground p-4">
-      <section className="mb-2 flex items-center justify-center">
+      <section className="flex items-center justify-center">
         <Button
           type="button"
           variant="ghost"
