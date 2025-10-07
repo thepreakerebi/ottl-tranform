@@ -1,24 +1,47 @@
 "use client";
 
-import { Copy, Trash2, PlusSquare, Settings } from "lucide-react";
+import { Copy, Trash2, Settings, GripHorizontal } from "lucide-react";
+import { Button } from "../../../components/ui/button";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { typeToDescription } from "../../../lib/ottl/blockCatalog";
 
 type Props = {
+  id: string;
   index?: number;
   type: string;
   signal: string;
+  icon?: React.ReactNode;
   configuredSummary?: string; // when configured, show this instead of the tooltip description
   onConfigure?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
 };
 
-export default function CanvasBlock({ index, type, signal, configuredSummary, onConfigure, onDuplicate, onDelete }: Props) {
+export default function CanvasBlock({ id, index, type, signal, icon, configuredSummary, onConfigure, onDuplicate, onDelete }: Props) {
   const title = humanizeType(type);
   const description = configuredSummary || typeToDescription[type] || "";
+  const sortable = useSortable({ id: `canvas-${id}` });
+  const style = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+  } as React.CSSProperties;
 
   return (
-    <article aria-label={title} className="rounded-lg bg-secondary text-secondary-foreground p-4">
+    <article aria-label={title} ref={sortable.setNodeRef} style={style} className="rounded-lg bg-secondary text-secondary-foreground p-4">
+      <section className="mb-2 flex items-center justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Drag to reorder"
+          className="cursor-grab active:cursor-grabbing"
+          {...sortable.attributes}
+          {...sortable.listeners}
+        >
+          <GripHorizontal />
+        </Button>
+      </section>
       <section className="flex items-start gap-4">
         <aside className="pt-1">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background text-xs font-semibold">
@@ -28,22 +51,23 @@ export default function CanvasBlock({ index, type, signal, configuredSummary, on
         <section className="flex-1">
           <header className="flex items-center justify-between">
             <h4 className="text-base font-semibold flex items-center gap-2">
-              <PlusSquare className="size-4" /> {title}
+              {icon}
+              {title}
             </h4>
             <section className="flex items-center gap-3">
-              <button type="button" aria-label="Duplicate block" onClick={onDuplicate} className="rounded p-1 hover:bg-accent focus:bg-accent">
-                <Copy className="size-4" />
-              </button>
-              <button type="button" aria-label="Delete block" onClick={onDelete} className="rounded p-1 hover:bg-accent focus:bg-accent">
-                <Trash2 className="size-4" />
-              </button>
+              <Button type="button" aria-label="Duplicate block" onClick={onDuplicate} variant="ghost" size="icon">
+                <Copy />
+              </Button>
+              <Button type="button" aria-label="Delete block" onClick={onDelete} variant="ghost" size="icon">
+                <Trash2 />
+              </Button>
             </section>
           </header>
           <p className="mt-4 text-base">{description}</p>
           <section className="mt-4">
-            <button type="button" onClick={onConfigure} className="inline-flex items-center gap-2 rounded border px-3 py-2">
+            <Button type="button" onClick={onConfigure} variant="outline" className="inline-flex items-center gap-2">
               <Settings className="size-4" /> Configure
-            </button>
+            </Button>
           </section>
         </section>
       </section>

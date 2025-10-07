@@ -5,6 +5,7 @@ import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import CanvasBlock from "./_components/CanvasBlock";
 import { useDndMonitor } from "@dnd-kit/core";
 import { labelToType, groupTitleToSignal, type GroupTitle } from "../../lib/ottl/blockCatalog";
+import { PlusSquare, MinusSquare, Pencil, VenetianMask, GitBranch, Hash, ScanText, Ruler, Sigma, Tags } from "lucide-react";
 import type { BlockType, SignalType } from "../../lib/ottl/types";
 
 export default function CanvasView() {
@@ -36,12 +37,41 @@ export default function CanvasView() {
       ) : (
         <section className="space-y-3">
           {blocks.map((b, idx) => (
-            <CanvasBlock key={b.id} index={idx + 1} type={b.type} signal={b.signal} />
+            <CanvasBlock key={b.id} id={b.id} index={idx + 1} type={b.type} signal={b.signal} icon={iconForType(b.type)} />
           ))}
         </section>
       )}
     </section>
   );
+}
+
+function iconForType(type: string) {
+  switch (type) {
+    case "addAttribute":
+      return <PlusSquare className="size-4" />;
+    case "removeAttribute":
+      return <MinusSquare className="size-4" />;
+    case "renameAttribute":
+      return <Pencil className="size-4" />;
+    case "maskAttribute":
+      return <VenetianMask className="size-4" />;
+    case "editParentChild":
+      return <GitBranch className="size-4" />;
+    case "editTraceOrSpanId":
+      return <Hash className="size-4" />;
+    case "renameLogField":
+      return <Pencil className="size-4" />;
+    case "maskLogField":
+      return <ScanText className="size-4" />;
+    case "unitConversion":
+      return <Ruler className="size-4" />;
+    case "aggregateSeries":
+      return <Sigma className="size-4" />;
+    case "editLabels":
+      return <Tags className="size-4" />;
+    default:
+      return <PlusSquare className="size-4" />;
+  }
 }
 
 
