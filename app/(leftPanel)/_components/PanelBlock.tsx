@@ -2,6 +2,7 @@
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { useDraggable } from "@dnd-kit/core";
+import { useEffect, useState } from "react";
 
 type Props = {
   icon: React.ReactNode;
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export default function PanelBlock({ icon, name, description, groupTitle, onSelect, disabled = false }: Props) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: `block-${groupTitle ?? "general"}-${name}`,
     data: { label: name, groupTitle: groupTitle ?? "General" },
@@ -25,8 +28,8 @@ export default function PanelBlock({ icon, name, description, groupTitle, onSele
         <TooltipTrigger asChild>
           <button
             ref={setNodeRef}
-            {...(!disabled ? listeners : {})}
-            {...(!disabled ? attributes : {})}
+            {...(mounted && !disabled ? listeners : {})}
+            {...(mounted && !disabled ? attributes : {})}
             type="button"
             onClick={() => {
               if (!disabled) onSelect?.();
