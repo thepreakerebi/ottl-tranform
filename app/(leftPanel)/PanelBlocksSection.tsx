@@ -4,6 +4,7 @@ import PanelBlock from "./_components/PanelBlock";
 import { ChevronDown, ChevronUp, PlusSquare, MinusSquare, Pencil, VenetianMask, GitBranch, Hash, ScanText, Ruler, Sigma, Tags } from "lucide-react";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import type { Block } from "../../lib/ottl/types";
+import { labelToType, groupTitleToSignal } from "../../lib/ottl/blockCatalog";
 
 type BlockGroup = {
   title: string;
@@ -50,8 +51,7 @@ export default function PanelBlocksSection() {
 
   function createBlock(type: string, groupTitle: string): Block {
     const id = `${type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
-    const signal =
-      groupTitle === "Traces" ? "traces" : groupTitle === "Metrics" ? "metrics" : groupTitle === "Logs" ? "logs" : "general";
+    const signal = groupTitleToSignal(groupTitle) as Block["signal"];
     return {
       id,
       type: type as Block["type"],
@@ -62,21 +62,7 @@ export default function PanelBlocksSection() {
   }
 
   function onSelectBlock(name: string, groupTitle: string) {
-    // Map UI label → BlockType
-    const map: Record<string, string> = {
-      "Add attribute": "addAttribute",
-      "Remove attribute": "removeAttribute",
-      "Rename attribute": "renameAttribute",
-      "Mask attribute": "maskAttribute",
-      "Edit parent/child": "editParentChild",
-      "Edit trace/span ID": "editTraceOrSpanId",
-      "Rename field": "renameLogField",
-      "Mask field": "maskLogField",
-      "Unit conversion": "unitConversion",
-      "Aggregate series": "aggregateSeries",
-      "Edit labels": "editLabels",
-    };
-    const type = map[name];
+    const type = labelToType[name];
     if (!type) return;
     const block = createBlock(type, groupTitle);
     addBlock(block);
