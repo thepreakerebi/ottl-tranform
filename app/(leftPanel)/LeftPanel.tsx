@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import TelemetryEditor from "./TelemetryEditor";
+import PanelBlocksSection from "./PanelBlocksSection";
 
 export default function LeftPanel() {
   return (
@@ -14,15 +15,7 @@ export default function LeftPanel() {
         <p className="text-sm text-muted-foreground">Paste telemetry data below</p>
       </header>
       <TelemetryEditor />
-      <section aria-label="Transformation blocks" className="border-t overflow-auto p-4 max-h-[50%]">
-        <h2 className="text-sm font-semibold mb-2">Blocks</h2>
-        <ul className="list-disc list-inside space-y-1">
-          <li>Add Attribute</li>
-          <li>Remove Attribute</li>
-          <li>Rename Attribute</li>
-          <li>Mask Attribute</li>
-        </ul>
-      </section>
+      <PanelBlocksSection />
     </aside>
   );
 }
