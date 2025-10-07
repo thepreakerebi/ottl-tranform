@@ -4,6 +4,7 @@ import "./globals.css";
 import DndProvider from "../components/providers/DndProvider";
 import A11yProvider from "../components/providers/A11yProvider";
 import WorkersProvider from "../components/providers/WorkersProvider";
+import { ThemeProvider } from "../components/providers/ThemeProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,18 +22,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} antialiased`}
         suppressHydrationWarning
       >
-        <A11yProvider>
-          <WorkersProvider>
-            <DndProvider>
-              {children}
-            </DndProvider>
-          </WorkersProvider>
-        </A11yProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          forcedTheme="light"
+          disableTransitionOnChange
+        >
+          <A11yProvider>
+            <WorkersProvider>
+              <DndProvider>
+                {children}
+              </DndProvider>
+            </WorkersProvider>
+          </A11yProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
