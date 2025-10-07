@@ -95,6 +95,7 @@ export default function PanelBlocksSection() {
                     icon={b.icon}
                     name={b.name}
                     description={b.description}
+                    groupTitle={g.title}
                     onSelect={() => onSelectBlock(b.name, g.title)}
                   />
                 ))}
