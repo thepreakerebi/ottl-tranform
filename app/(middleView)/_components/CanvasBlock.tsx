@@ -18,30 +18,34 @@ export default function CanvasBlock({ index, type, signal, configuredSummary, on
   const description = configuredSummary || typeToDescription[type] || "";
 
   return (
-    <article aria-label={title} className="rounded-lg border bg-accent/10 text-card-foreground p-4">
-      <header className="flex items-center justify-between">
-        <section className="flex items-center gap-3">
+    <article aria-label={title} className="rounded-lg bg-secondary text-secondary-foreground p-4">
+      <section className="flex items-start gap-4">
+        <aside className="pt-1">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background text-xs font-semibold">
             {index ?? 1}
           </span>
-          <h4 className="text-base font-semibold flex items-center gap-2">
-            <PlusSquare className="size-4" /> {title}
-          </h4>
+        </aside>
+        <section className="flex-1">
+          <header className="flex items-center justify-between">
+            <h4 className="text-base font-semibold flex items-center gap-2">
+              <PlusSquare className="size-4" /> {title}
+            </h4>
+            <section className="flex items-center gap-3">
+              <button type="button" aria-label="Duplicate block" onClick={onDuplicate} className="rounded p-1 hover:bg-accent focus:bg-accent">
+                <Copy className="size-4" />
+              </button>
+              <button type="button" aria-label="Delete block" onClick={onDelete} className="rounded p-1 hover:bg-accent focus:bg-accent">
+                <Trash2 className="size-4" />
+              </button>
+            </section>
+          </header>
+          <p className="mt-4 text-base">{description}</p>
+          <section className="mt-4">
+            <button type="button" onClick={onConfigure} className="inline-flex items-center gap-2 rounded border px-3 py-2">
+              <Settings className="size-4" /> Configure
+            </button>
+          </section>
         </section>
-        <section className="flex items-center gap-3">
-          <button type="button" aria-label="Duplicate block" onClick={onDuplicate} className="rounded p-1 hover:bg-accent focus:bg-accent">
-            <Copy className="size-4" />
-          </button>
-          <button type="button" aria-label="Delete block" onClick={onDelete} className="rounded p-1 hover:bg-accent focus:bg-accent">
-            <Trash2 className="size-4" />
-          </button>
-        </section>
-      </header>
-      <p className="mt-4 text-base">{description}</p>
-      <section className="mt-4">
-        <button type="button" onClick={onConfigure} className="inline-flex items-center gap-2 rounded border px-3 py-2">
-          <Settings className="size-4" /> Configure
-        </button>
       </section>
     </article>
   );
