@@ -4,10 +4,10 @@ import PanelBlock from "./_components/PanelBlock";
 import { ChevronDown, ChevronUp, PlusSquare, MinusSquare, Pencil, VenetianMask, GitBranch, Hash, ScanText, Ruler, Sigma, Tags } from "lucide-react";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import type { Block } from "../../lib/ottl/types";
-import { labelToType, groupTitleToSignal } from "../../lib/ottl/blockCatalog";
+import { labelToType, groupTitleToSignal, type GroupTitle } from "../../lib/ottl/blockCatalog";
 
 type BlockGroup = {
-  title: string;
+  title: GroupTitle;
   items: Array<{ name: string; description: string; icon: React.ReactNode }>
 };
 
@@ -49,7 +49,7 @@ export default function PanelBlocksSection() {
   const [expanded, setExpanded] = useState(true);
   const addBlock = usePipelineStore((s) => s.addBlock);
 
-  function createBlock(type: string, groupTitle: string): Block {
+  function createBlock(type: string, groupTitle: GroupTitle): Block {
     const id = `${type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
     const signal = groupTitleToSignal(groupTitle) as Block["signal"];
     return {
@@ -61,7 +61,7 @@ export default function PanelBlocksSection() {
     };
   }
 
-  function onSelectBlock(name: string, groupTitle: string) {
+  function onSelectBlock(name: string, groupTitle: GroupTitle) {
     const type = labelToType[name];
     if (!type) return;
     const block = createBlock(type, groupTitle);

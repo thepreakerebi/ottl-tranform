@@ -12,11 +12,27 @@ export const labelToType: Record<string, string> = {
   "Edit labels": "editLabels",
 };
 
-export function groupTitleToSignal(groupTitle: string) {
+export type GroupTitle = "General" | "Traces" | "Logs" | "Metrics";
+
+export function groupTitleToSignal(groupTitle: GroupTitle): "general" | "traces" | "metrics" | "logs" {
   if (groupTitle === "Traces") return "traces";
   if (groupTitle === "Metrics") return "metrics";
   if (groupTitle === "Logs") return "logs";
   return "general";
 }
+
+export const typeToDescription: Record<string, string> = {
+  addAttribute: "Add a new key-value to the data",
+  removeAttribute: "Remove one or more attributes",
+  renameAttribute: "Rename an attribute key",
+  maskAttribute: "Mask an attribute value",
+  editParentChild: "Change span parent/child relations",
+  editTraceOrSpanId: "Modify or randomize trace/span IDs",
+  renameLogField: "Rename a log field",
+  maskLogField: "Mask a log field",
+  unitConversion: "Convert metric units",
+  aggregateSeries: "Aggregate metric datapoints",
+  editLabels: "Rename, remove, or change labels",
+};
 
 
