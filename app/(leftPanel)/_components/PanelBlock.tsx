@@ -9,12 +9,14 @@ type Props = {
   description: string;
   groupTitle?: string;
   onSelect?: () => void;
+  disabled?: boolean;
 };
 
-export default function PanelBlock({ icon, name, description, groupTitle, onSelect }: Props) {
+export default function PanelBlock({ icon, name, description, groupTitle, onSelect, disabled = false }: Props) {
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: `block-${groupTitle ?? "general"}-${name}`,
     data: { label: name, groupTitle: groupTitle ?? "General" },
+    disabled,
   });
 
   return (
@@ -23,11 +25,16 @@ export default function PanelBlock({ icon, name, description, groupTitle, onSele
         <TooltipTrigger asChild>
           <button
             ref={setNodeRef}
-            {...listeners}
-            {...attributes}
+            {...(!disabled ? listeners : {})}
+            {...(!disabled ? attributes : {})}
             type="button"
-            onClick={onSelect}
-            className="w-full text-left rounded px-3 py-2 hover:bg-accent focus:bg-accent focus:outline-none focus:ring-2 focus:ring-ring flex items-center gap-2 cursor-grab active:cursor-grabbing"
+            onClick={() => {
+              if (!disabled) onSelect?.();
+            }}
+            aria-disabled={disabled}
+            className={`w-full text-left rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring flex items-center gap-2 ${
+              disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-accent focus:bg-accent cursor-grab active:cursor-grabbing"
+            }`}
           >
             <span aria-hidden className="inline-flex items-center justify-center rounded-sm">
               {icon}

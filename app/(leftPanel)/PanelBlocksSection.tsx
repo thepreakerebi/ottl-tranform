@@ -3,6 +3,7 @@ import { useState } from "react";
 import PanelBlock from "./_components/PanelBlock";
 import { ChevronDown, ChevronUp, PlusSquare, MinusSquare, Pencil, VenetianMask, GitBranch, Hash, ScanText, Ruler, Sigma, Tags } from "lucide-react";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
+import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import type { Block } from "../../lib/ottl/types";
 import { labelToType, groupTitleToSignal, type GroupTitle } from "../../lib/ottl/blockCatalog";
 
@@ -48,6 +49,7 @@ const groups: BlockGroup[] = [
 export default function PanelBlocksSection() {
   const [expanded, setExpanded] = useState(true);
   const addBlock = usePipelineStore((s) => s.addBlock);
+  const signal = useTelemetryStore((s) => s.signal);
 
   function createBlock(type: string, groupTitle: GroupTitle): Block {
     const id = `${type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
@@ -89,16 +91,25 @@ export default function PanelBlocksSection() {
             <section key={g.title} aria-label={g.title} className="space-y-2">
               <h3 className="text-xs font-semibold text-muted-foreground">{g.title}</h3>
               <ul className="space-y-1">
-                {g.items.map((b) => (
-                  <PanelBlock
-                    key={b.name}
-                    icon={b.icon}
-                    name={b.name}
-                    description={b.description}
-                    groupTitle={g.title}
-                    onSelect={() => onSelectBlock(b.name, g.title)}
-                  />
-                ))}
+                {g.items.map((b) => {
+                  const isGeneral = g.title === "General";
+                  const allowed =
+                    signal === "unknown" || isGeneral ||
+                    (signal === "traces" && g.title === "Traces") ||
+                    (signal === "metrics" && g.title === "Metrics") ||
+                    (signal === "logs" && g.title === "Logs");
+                  return (
+                    <PanelBlock
+                      key={b.name}
+                      icon={b.icon}
+                      name={b.name}
+                      description={b.description}
+                      groupTitle={g.title}
+                      onSelect={() => onSelectBlock(b.name, g.title)}
+                      disabled={!allowed}
+                    />
+                  );
+                })}
               </ul>
             </section>
           ))}
