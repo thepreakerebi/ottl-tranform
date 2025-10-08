@@ -244,55 +244,73 @@ function summarizeCondition(node: ConditionNode): string {
 
 function renderGroupEditor(group: ConditionGroup, path: number[], onChange: (g: ConditionGroup) => void, suggestions: string[]): React.ReactNode {
   return (
-    <section className="space-y-2 border rounded p-2">
-      <section className="flex items-center gap-2">
-        <Label className="text-xs">Group operator</Label>
-        <Select value={group.op} onValueChange={(v) => onChange({ ...group, op: v as ConditionGroup["op"] })}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="AND">AND</SelectItem>
-            <SelectItem value="OR">OR</SelectItem>
-          </SelectContent>
-        </Select>
-        <Label className="text-xs ml-2">NOT</Label>
-        <RadioGroup value={group.not ? "true" : "false"} onValueChange={(v) => onChange({ ...group, not: v === "true" })} className="flex items-center gap-2">
-          <section className="flex items-center gap-1">
-            <RadioGroupItem id={`not-${path.join('-')}-no`} value="false" />
-            <Label htmlFor={`not-${path.join('-')}-no`}>No</Label>
+    <section className="space-y-3 border rounded p-3">
+      <section className="space-y-3">
+        <section className="space-y-2">
+          <section className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Group operator</Label>
+            <Select value={group.op} onValueChange={(v) => onChange({ ...group, op: v as ConditionGroup["op"] })}>
+              <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AND">AND</SelectItem>
+                <SelectItem value="OR">OR</SelectItem>
+              </SelectContent>
+            </Select>
           </section>
-          <section className="flex items-center gap-1">
-            <RadioGroupItem id={`not-${path.join('-')}-yes`} value="true" />
-            <Label htmlFor={`not-${path.join('-')}-yes`}>Yes</Label>
+          <section className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">NOT</Label>
+            <RadioGroup value={group.not ? "true" : "false"} onValueChange={(v) => onChange({ ...group, not: v === "true" })} className="flex items-center gap-2">
+              <section className="flex items-center gap-1">
+                <RadioGroupItem id={`not-${path.join('-')}-no`} value="false" />
+                <Label htmlFor={`not-${path.join('-')}-no`} className="text-xs">No</Label>
+              </section>
+              <section className="flex items-center gap-1">
+                <RadioGroupItem id={`not-${path.join('-')}-yes`} value="true" />
+                <Label htmlFor={`not-${path.join('-')}-yes`} className="text-xs">Yes</Label>
+              </section>
+            </RadioGroup>
           </section>
-        </RadioGroup>
-        <section className="ml-auto flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => onChange({ ...group, children: [...group.children, emptyComparison()] })}>Add condition</Button>
-          <Button type="button" variant="outline" onClick={() => onChange({ ...group, children: [...group.children, emptyGroup()] })}>Add group</Button>
+        </section>
+        <section className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...group, children: [...group.children, emptyComparison()] })} className="flex-1">
+            Add condition
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...group, children: [...group.children, emptyGroup()] })} className="flex-1">
+            Add group
+          </Button>
         </section>
       </section>
       <section className="space-y-2">
         {group.children.map((child, idx) => (
-          <section key={idx} className="flex items-start gap-2">
-            {child.kind === "cmp" ? (
-              renderComparison(child, (next) => {
-                const children = group.children.slice();
-                children[idx] = next;
-                onChange({ ...group, children });
-              }, suggestions)
-            ) : (
-              <section className="flex-1">
-                {renderGroupEditor(child, [...path, idx], (nextGroup) => {
+          <section key={idx} className="space-y-2">
+            <section className="flex-1">
+              {child.kind === "cmp" ? (
+                renderComparison(child, (next) => {
+                  const children = group.children.slice();
+                  children[idx] = next;
+                  onChange({ ...group, children });
+                }, suggestions)
+              ) : (
+                renderGroupEditor(child, [...path, idx], (nextGroup) => {
                   const children = group.children.slice();
                   children[idx] = nextGroup;
                   onChange({ ...group, children });
-                }, suggestions)}
-              </section>
-            )}
-            <Button type="button" variant="ghost" onClick={() => {
-              const children = group.children.slice();
-              children.splice(idx, 1);
-              onChange({ ...group, children });
-            }}>Remove</Button>
+                }, suggestions)
+              )}
+            </section>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => {
+                const children = group.children.slice();
+                children.splice(idx, 1);
+                onChange({ ...group, children });
+              }}
+              className="self-start"
+            >
+              Remove
+            </Button>
           </section>
         ))}
       </section>
@@ -302,22 +320,35 @@ function renderGroupEditor(group: ConditionGroup, path: number[], onChange: (g: 
 
 function renderComparison(cmp: ConditionComparison, onChange: (c: ConditionComparison) => void, suggestions: string[]): React.ReactNode {
   return (
-    <section className="flex items-center gap-2 w-full">
-      <Input list="attr-suggestions" placeholder="Attribute path (e.g. span.name or resource.attributes['service.name'])" value={cmp.attribute} onChange={(e) => onChange({ ...cmp, attribute: e.target.value })} className="flex-1" />
-      <Select value={cmp.operator} onValueChange={(v) => onChange({ ...cmp, operator: v as ConditionComparison["operator"] })}>
-        <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="eq">=</SelectItem>
-          <SelectItem value="neq">≠</SelectItem>
-          <SelectItem value="contains">contains</SelectItem>
-          <SelectItem value="starts">starts with</SelectItem>
-          <SelectItem value="regex">regex</SelectItem>
-          <SelectItem value="exists">exists</SelectItem>
-        </SelectContent>
-      </Select>
-      {cmp.operator !== "exists" && (
-        <Input placeholder="Value" value={String(cmp.value ?? "")} onChange={(e) => onChange({ ...cmp, value: e.target.value })} className="w-[200px]" />
-      )}
+    <section className="space-y-2 w-full">
+      <Input 
+        list="attr-suggestions" 
+        placeholder="Attribute path" 
+        value={cmp.attribute} 
+        onChange={(e) => onChange({ ...cmp, attribute: e.target.value })} 
+        className="w-full" 
+      />
+      <section className="flex gap-2">
+        <Select value={cmp.operator} onValueChange={(v) => onChange({ ...cmp, operator: v as ConditionComparison["operator"] })}>
+          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="eq">=</SelectItem>
+            <SelectItem value="neq">≠</SelectItem>
+            <SelectItem value="contains">contains</SelectItem>
+            <SelectItem value="starts">starts with</SelectItem>
+            <SelectItem value="regex">regex</SelectItem>
+            <SelectItem value="exists">exists</SelectItem>
+          </SelectContent>
+        </Select>
+        {cmp.operator !== "exists" && (
+          <Input 
+            placeholder="Value" 
+            value={String(cmp.value ?? "")} 
+            onChange={(e) => onChange({ ...cmp, value: e.target.value })} 
+            className="flex-1" 
+          />
+        )}
+      </section>
       <datalist id="attr-suggestions">
         {suggestions.map((s) => (
           <option key={s} value={s} />
