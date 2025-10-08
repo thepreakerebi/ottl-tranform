@@ -52,7 +52,7 @@ export default function CanvasView() {
     <section
       ref={setNodeRef}
       aria-label="Canvas"
-      className={`h-full p-4 ${isOver ? "bg-accent/30" : ""}`}
+      className={`h-full overflow-y-auto overflow-x-hidden p-4 ${isOver ? "bg-accent/30" : ""}`}
     >
       {blocks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
