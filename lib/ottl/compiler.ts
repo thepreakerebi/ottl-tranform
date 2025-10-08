@@ -18,6 +18,9 @@ export function compileBlocksToOTTL(blocks: Block[]): string {
       case "removeAttribute":
         compileRemoveAttribute(b, buckets);
         break;
+      case "maskAttribute":
+        compileMaskAttribute(b, buckets);
+        break;
       default:
         // unsupported in MVP
         break;
@@ -116,6 +119,53 @@ function compileRemoveAttribute(block: Block, buckets: Buckets) {
   const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
   const lines = keys.map((k) => `- delete_key(attributes, ${JSON.stringify(k)})${rootClause}`).join("\n        ");
   buckets.trace.push(`context: span\n      statements:\n        ${lines}`);
+}
+
+function compileMaskAttribute(block: Block, buckets: Buckets) {
+  const cfg = block.config as Record<string, unknown>;
+  const scope = String(cfg.scope ?? "allSpans");
+  const keys: string[] = Array.isArray((cfg as { keys?: string[] }).keys) ? (cfg as { keys?: string[] }).keys || [] : [];
+  const start = String(cfg["substringStart"] ?? "0");
+  const endRaw = cfg["substringEnd"];
+  const end = endRaw == null || String(endRaw).length === 0 ? undefined : String(endRaw);
+  const chain = cfg["condition"] as ConditionChain | null | undefined;
+  const where = chain ? ` where ${compileWhere(chain)}` : "";
+
+  if (keys.length === 0) return;
+
+  if (scope === "resource") {
+    const lines = keys.map((k) => `- set(resource.attributes[${JSON.stringify(k)}], ${compileMaskExpr(true, k, start, end)})`).join("\n        ");
+    buckets.trace.push(`context: resource\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allDatapoints") {
+    const lines = keys.map((k) => `- set(attributes[${JSON.stringify(k)}], ${compileMaskExpr(false, k, start, end)})`).join("\n        ");
+    buckets.metric.push(`context: datapoint\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allLogs") {
+    const lines = keys.map((k) => `- set(attributes[${JSON.stringify(k)}], ${compileMaskExpr(false, k, start, end)})${where}`).join("\n        ");
+    buckets.log.push(`context: log\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
+  const lines = keys.map((k) => `- set(attributes[${JSON.stringify(k)}], ${compileMaskExpr(false, k, start, end)})${rootClause}`).join("\n        ");
+  buckets.trace.push(`context: span\n      statements:\n        ${lines}`);
+}
+
+function compileMaskExpr(isResource: boolean, key: string, start: string, end: string | undefined): string {
+  const src = isResource ? `resource.attributes[${JSON.stringify(key)}]` : `attributes[${JSON.stringify(key)}]`;
+  const s = Number(start) || 0;
+  const left = `Substring(${src}, 0, ${s})`;
+  if (end == null) {
+    return `Concat(${left}, "*")`;
+  }
+  const e = Number(end);
+  const right = `Substring(${src}, ${isNaN(e) ? s : e})`;
+  return `Concat(${left}, "*", ${right})`;
 }
 
 function compileValue(

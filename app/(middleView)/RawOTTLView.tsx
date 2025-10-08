@@ -3,27 +3,29 @@
 import Editor from "@monaco-editor/react";
 import { useOttlStore } from "../../lib/stores/ottlStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { compileBlocksToOTTL } from "../../lib/ottl/compiler";
 
 export default function RawOTTLView() {
   const { text, setText } = useOttlStore();
   const blocks = usePipelineStore((s) => s.blocks);
 
-  // Compile blocks to OTTL whenever blocks change, but don't overwrite
-  // manual edits if the text already diverged from the compiled version.
+  // Compile blocks to OTTL whenever blocks change.
+  // Auto-sync only if the editor is empty OR still showing the last auto-compiled text.
+  // If the user has manually edited (text !== lastCompiled), preserve their edits.
+  const lastCompiledRef = useRef<string>("");
   useEffect(() => {
     const compiled = compileBlocksToOTTL(blocks);
-    if (!text || text.trim().length === 0) {
+    const isEmpty = !text || text.trim().length === 0;
+    const isStillAuto = text === lastCompiledRef.current;
+    if (isEmpty || isStillAuto) {
       setText(compiled);
+      lastCompiledRef.current = compiled;
       return;
     }
-    // If text starts with transform: and differs only by whitespace, sync; else preserve edits
-    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-    if (norm(text) === norm(compileBlocksToOTTL([]))) {
-      setText(compiled);
-    }
-  }, [blocks]);
+    // User has edited; keep their text, but refresh our reference for next time
+    lastCompiledRef.current = compiled;
+  }, [blocks, text, setText]);
   return (
     <section aria-label="Raw OTTL" className="h-full">
       <Editor
