@@ -8,6 +8,8 @@ import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { runPipeline } from "../../lib/compute/runPipeline";
+import { useOttlStore } from "../../lib/stores/ottlStore";
+import { parseOttlToBlocks } from "../../lib/ottl/parser";
 
 export default function BottomBar() {
   const active = useUIStore((s) => s.activeMiddleTab);
@@ -16,13 +18,17 @@ export default function BottomBar() {
   const telemetry = useTelemetryStore((s) => s.parsed);
   const blocks = usePipelineStore((s) => s.blocks);
   const setSnapshots = usePreviewStore((s) => s.setSnapshots);
+  const ottlText = useOttlStore((s) => s.text);
 
   function handleRun() {
     if (isRunning) return;
-    if (!telemetry || !Array.isArray(blocks) || blocks.length === 0) return;
+    if (!telemetry) return;
     setIsRunning(true);
     try {
-      const result = runPipeline(telemetry, blocks);
+      const useRaw = active === "raw-ottl" && ottlText.trim().length > 0;
+      const blocksToRun = useRaw ? parseOttlToBlocks(ottlText) : blocks;
+      if (!Array.isArray(blocksToRun) || blocksToRun.length === 0) return;
+      const result = runPipeline(telemetry, blocksToRun);
       setSnapshots(result.snapshots);
     } finally {
       setIsRunning(false);
@@ -60,7 +66,12 @@ export default function BottomBar() {
           type="button"
           onClick={handleRun}
           aria-busy={isRunning}
-          disabled={isRunning || !telemetry || !blocks || blocks.length === 0}
+          disabled={
+            isRunning ||
+            !telemetry ||
+            (active === "canvas" && (!blocks || blocks.length === 0)) ||
+            (active === "raw-ottl" && (!ottlText || ottlText.trim().length === 0))
+          }
           className="rounded-[6px] px-4 py-2 inline-flex items-center gap-2"
         >
           {isRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
