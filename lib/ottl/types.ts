@@ -29,6 +29,7 @@ export interface BlockBase {
   config: Record<string, unknown>;
   enabled: boolean;
   errors?: string[];
+  summary?: string;
 }
 
 export type Block = BlockBase;

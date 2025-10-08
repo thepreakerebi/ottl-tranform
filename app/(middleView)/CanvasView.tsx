@@ -70,6 +70,7 @@ export default function CanvasView() {
                 index={idx + 1}
                 type={b.type}
                 signal={b.signal}
+                configuredSummary={b.summary}
                 icon={iconForType(b.type)}
                 onDelete={() => removeBlock(b.id)}
                 onDuplicate={() => {
@@ -77,7 +78,7 @@ export default function CanvasView() {
                   addBlock({ ...b, id });
                 }}
                 onConfigure={() => updateBlock(b.id, { /* placeholder */ })}
-                onApplyConfig={(summary, config) => updateBlock(b.id, { config, errors: undefined })}
+                onApplyConfig={(summary, config) => updateBlock(b.id, { config, summary, errors: undefined })}
               />
             ))}
           </section>
