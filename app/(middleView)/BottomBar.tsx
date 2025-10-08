@@ -18,6 +18,7 @@ export default function BottomBar() {
   const telemetry = useTelemetryStore((s) => s.parsed);
   const blocks = usePipelineStore((s) => s.blocks);
   const setSnapshots = usePreviewStore((s) => s.setSnapshots);
+  const setAutoJump = usePreviewStore((s) => s.setAutoJump);
   const ottlText = useOttlStore((s) => s.text);
 
   function handleRun() {
@@ -30,6 +31,7 @@ export default function BottomBar() {
       if (!Array.isArray(blocksToRun) || blocksToRun.length === 0) return;
       const result = runPipeline(telemetry, blocksToRun);
       setSnapshots(result.snapshots);
+      setAutoJump(true);
     } finally {
       setIsRunning(false);
     }

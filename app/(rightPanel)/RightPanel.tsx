@@ -12,6 +12,8 @@ export default function RightPanel() {
   const snapshots = usePreviewStore((s) => s.snapshots);
   const stepIndex = usePreviewStore((s) => s.stepIndex);
   const setStepIndex = usePreviewStore((s) => s.setStepIndex);
+  const shouldAutoJump = usePreviewStore((s) => s.shouldAutoJump);
+  const setAutoJump = usePreviewStore((s) => s.setAutoJump);
   const blocks = usePipelineStore((s) => s.blocks);
 
   const options = useMemo(() => {
@@ -30,6 +32,17 @@ export default function RightPanel() {
   // firstChanged retained conceptually; header button logic uses highlightList directly
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // After a run, auto-jump to the first change cluster once
+  useEffect(() => {
+    if (!shouldAutoJump || highlightList.length === 0) return;
+    const target = highlightList[0];
+    const el = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setAutoJump(false);
+  // We intentionally depend only on shouldAutoJump + list length so the deps array size is stable across renders
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoJump, highlightList.length]);
 
   // When new snapshots arrive (e.g., after Run), default to the last step.
   useEffect(() => {
@@ -112,7 +125,7 @@ export default function RightPanel() {
               <span className="text-muted-foreground">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
             </div>
             {/* Scrollable JSON content */}
-            <div className="flex-1 min-h-0 overflow-auto" ref={contentRef}>
+            <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
               <div className="p-4">
                 {renderHighlighted(afterStr, afterHighlights)}
               </div>
