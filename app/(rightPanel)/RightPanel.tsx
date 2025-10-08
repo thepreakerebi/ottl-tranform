@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Button } from "../../components/ui/button";
+import { ArrowDown } from "lucide-react";
 
 export default function RightPanel() {
   const snapshots = usePreviewStore((s) => s.snapshots);
@@ -22,6 +24,8 @@ export default function RightPanel() {
   const beforeStr = useMemo(() => pretty(current?.before), [current]);
   const afterStr = useMemo(() => pretty(current?.after), [current]);
   const afterHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
+  const firstChanged = useMemo(() => (afterHighlights.size ? Math.min(...Array.from(afterHighlights)) : null), [afterHighlights]);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
@@ -54,11 +58,27 @@ export default function RightPanel() {
           <div className="h-full flex flex-col">
             {/* Fixed output header */}
             <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
-              <span>Output</span>
+              <section className="flex items-center gap-1">
+                <span>Output</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Jump to first change"
+                  disabled={firstChanged === null}
+                  onClick={() => {
+                    if (firstChanged === null) return;
+                    const el = contentRef.current?.querySelector(`[data-line="${firstChanged}"]`) as HTMLElement | null;
+                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                >
+                  <ArrowDown className="size-4" />
+                </Button>
+              </section>
               <span className="text-muted-foreground">{options[stepIndex]?.label}</span>
             </div>
             {/* Scrollable JSON content */}
-            <div className="flex-1 min-h-0 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto" ref={contentRef}>
               <div className="p-4">
                 {renderHighlighted(afterStr, afterHighlights)}
               </div>
@@ -107,7 +127,7 @@ function renderHighlighted(text: string, highlights: Set<number>) {
   return (
     <section>
       {lines.map((ln, i) => (
-        <div key={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
+        <div key={i} data-line={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
       ))}
     </section>
   );
