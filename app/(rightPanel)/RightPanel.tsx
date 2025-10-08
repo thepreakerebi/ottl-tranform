@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 export default function RightPanel() {
   const snapshots = usePreviewStore((s) => s.snapshots);
@@ -26,6 +27,7 @@ export default function RightPanel() {
   const afterHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
   const firstChanged = useMemo(() => (afterHighlights.size ? Math.min(...Array.from(afterHighlights)) : null), [afterHighlights]);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const [copied, setCopied] = useState(false);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
@@ -74,6 +76,27 @@ export default function RightPanel() {
                 >
                   <ArrowDown className="size-4" />
                 </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Copy output"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(afterStr);
+                      setCopied(true);
+                      toast.success("Output copied to clipboard");
+                      setTimeout(() => setCopied(false), 1500);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                >
+                  <Copy className="size-4" />
+                </Button>
+                {copied && (
+                  <span role="status" aria-live="polite" className="text-[11px] text-green-600 ml-1">Copied!</span>
+                )}
               </section>
               <span className="text-muted-foreground">{options[stepIndex]?.label}</span>
             </div>

@@ -5,6 +5,7 @@ import DndProvider from "../components/providers/DndProvider";
 import A11yProvider from "../components/providers/A11yProvider";
 import WorkersProvider from "../components/providers/WorkersProvider";
 import { ThemeProvider } from "../components/providers/ThemeProvider";
+import { Toaster } from "../components/ui/sonner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -42,6 +43,7 @@ export default function RootLayout({
             </WorkersProvider>
           </A11yProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

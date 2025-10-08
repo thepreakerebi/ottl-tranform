@@ -36,6 +36,7 @@
     "react-hook-form": "^7.64.0",
     "react-resizable-panels": "^3.0.6",
     "react-virtuoso": "^4.14.1",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "yaml": "^2.8.1",
     "zod": "^4.1.12",
