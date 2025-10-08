@@ -8,7 +8,9 @@ import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
-import type { ConditionChain, ConditionChainClause, ConditionComparison } from "../../../lib/ottl/types";
+import type { ConditionChain, ConditionComparison } from "../../../lib/ottl/types";
+import TargetLevelSelect from "./TargetLevelSelect";
+import ConditionChainBuilder from "./ConditionChainBuilder";
 // import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 
 type Props = {
@@ -22,7 +24,7 @@ type Props = {
 type LiteralType = "string" | "number" | "boolean";
 type ValueMode = "literal" | "substring";
 type CollisionPolicy = "upsert" | "skip" | "onlyIfMissing";
-type ScopeValue = "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
+type ScopeValue = import("./TargetLevelSelect").ScopeValue;
 
 export default function AddAttributeBlockConfiguration({ signal, description: helpText, onApply, onCancel, initialConfig }: Props) {
   const scopes = useMemo(() => getScopes(signal), [signal]);
@@ -40,8 +42,6 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
 
   // Ensure the selected scope remains valid if signal changes
   if (!scopes.some((s) => s.value === scope)) {
-    // setState during render is safe here because it only runs when invalid
-    // and will sync the controlled select to a defined value
     setScope(scopes[0]?.value ?? "resource");
   }
 
@@ -100,29 +100,9 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
       <PopoverSeparator />
       <PopoverBody className="max-h-[300px] space-y-4">
         <section className="space-y-4">
-          <section>
-            <Label className="text-xs font-medium" htmlFor="scope">Target level</Label>
-            <section className="mt-1 w-full">
-              <Select value={scope} onValueChange={(v) => setScope(v as ScopeValue)}>
-                <SelectTrigger id="scope" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {scopes.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </section>
-          </section>
+          <TargetLevelSelect signal={signal} value={scope} onChange={setScope} />
         {scope === "conditional" && condition && (
-          <section>
-            <Label className="text-xs font-medium">Conditions</Label>
-            <section className="mt-2 space-y-3">
-              {renderChainEditor(condition, (updated) => setCondition(updated))}
-            </section>
-            <p className="text-[11px] text-muted-foreground mt-1">Only items matching the expression will receive the attribute.</p>
-          </section>
+          <ConditionChainBuilder value={condition} onChange={setCondition} />
         )}
         </section>
         <Separator />
@@ -261,93 +241,6 @@ function summarizeChain(chain: ConditionChain): string {
 function validateChain(chain: ConditionChain): boolean {
   if (!validateCondition(chain.first)) return false;
   return chain.rest.every((c) => validateCondition(c.expr));
-}
-
-function renderComparison(cmp: ConditionComparison, onChange: (c: ConditionComparison) => void): React.ReactNode {
-  return (
-    <section className="space-y-2 w-full">
-      <Input 
-        placeholder="Where (e.g. name, http.method, service.name)" 
-        value={cmp.attribute} 
-        onChange={(e) => onChange({ ...cmp, attribute: e.target.value })} 
-        className="w-full" 
-      />
-      <section className="flex gap-2">
-        <Select value={cmp.operator} onValueChange={(v) => onChange({ ...cmp, operator: v as ConditionComparison["operator"] })}>
-          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="eq">=</SelectItem>
-            <SelectItem value="neq">≠</SelectItem>
-            <SelectItem value="contains">contains</SelectItem>
-            <SelectItem value="starts">starts with</SelectItem>
-            <SelectItem value="regex">regex</SelectItem>
-            <SelectItem value="exists">exists</SelectItem>
-          </SelectContent>
-        </Select>
-        {cmp.operator !== "exists" && (
-          <Input 
-            placeholder="Value" 
-            value={String(cmp.value ?? "")} 
-            onChange={(e) => onChange({ ...cmp, value: e.target.value })} 
-            className="flex-1" 
-          />
-        )}
-      </section>
-    </section>
-  );
-}
-
-function emptyComparison(): ConditionComparison {
-  return { kind: "cmp", attribute: "", operator: "eq", value: "" };
-}
-
-function renderChainEditor(chain: ConditionChain, onChange: (c: ConditionChain) => void): React.ReactNode {
-  return (
-    <section className="space-y-3">
-      {renderComparison(chain.first, (next) => onChange({ ...chain, first: next }))}
-      {chain.rest.map((clause, idx) => (
-        <section key={idx} className="space-y-2">
-          <section className="flex items-center gap-3">
-            <Separator className="flex-1" />
-            <Select value={clause.op} onValueChange={(v) => {
-              const rest = chain.rest.slice();
-              rest[idx] = { ...clause, op: v as ConditionChainClause["op"] };
-              onChange({ ...chain, rest });
-            }}>
-              <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="AND">AND</SelectItem>
-                <SelectItem value="OR">OR</SelectItem>
-              </SelectContent>
-            </Select>
-            <Separator className="flex-1" />
-          </section>
-          {renderComparison(clause.expr, (next) => {
-            const rest = chain.rest.slice();
-            rest[idx] = { ...clause, expr: next };
-            onChange({ ...chain, rest });
-          })}
-          <section className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => {
-              const rest = chain.rest.slice();
-              rest.splice(idx, 1);
-              onChange({ ...chain, rest });
-            }}>Remove</Button>
-            {idx === chain.rest.length - 1 && (
-              <Button type="button" variant="outline" size="sm" onClick={() => {
-                const rest = chain.rest.slice();
-                rest.splice(idx + 1, 0, { op: "AND", expr: emptyComparison() });
-                onChange({ ...chain, rest });
-              }}>Add condition</Button>
-            )}
-          </section>
-        </section>
-      ))}
-      {chain.rest.length === 0 && (
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...chain, rest: [{ op: "AND", expr: emptyComparison() }] })}>Add condition</Button>
-      )}
-    </section>
-  );
 }
 
 // Suggestions removed for MVP simplicity
