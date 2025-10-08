@@ -68,10 +68,12 @@ function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue 
         if (!within) continue;
         const condOk = !cfg.condition || evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs);
         if (!condOk) continue;
-        // If conditional and the chain clearly targets scope.name (e.g., name == <literal matching scope.name> or scope.name == <literal>), write to scope
-        const writeToScope = cfg.scope === "conditional" && (mentionsScopeNameEquality(cfg.condition, ss.scope as Scope | undefined) || mentionsExplicitScopeNameLiteral(cfg.condition, ss.scope as Scope | undefined));
-        if (writeToScope) {
-          upsertAttr(ss.scope as unknown as AttributeContainer | undefined, cfg, resourceAttrs);
+        // Decide write targets dynamically for Conditional
+        if (cfg.scope === "conditional") {
+          const targets = detectWriteTargets(cfg.condition, sp, ss.scope as Scope | undefined);
+          if (targets.toScope) upsertAttr(ss.scope as unknown as AttributeContainer | undefined, cfg, resourceAttrs);
+          if (targets.toSpan) upsertAttr(sp, cfg, resourceAttrs);
+          if (!targets.toScope && !targets.toSpan) upsertAttr(sp, cfg, resourceAttrs);
         } else {
           upsertAttr(sp, cfg, resourceAttrs);
         }
@@ -307,6 +309,23 @@ function mentionsExplicitScopeNameLiteral(chain: AddAttrConfig["condition"] | nu
   if (!chain || !scope) return false;
   const checks = [chain.first, ...chain.rest.map((c) => c.expr)];
   return checks.some((c) => c.attribute === "scope.name" && c.operator === "eq" && String(c.value ?? "") === String(scope.name ?? ""));
+}
+
+function detectWriteTargets(chain: AddAttrConfig["condition"] | null | undefined, span: Span, scope: Scope | undefined) {
+  // Heuristic: if any clause explicitly references scope.name equality or prefix-less name equals scope.name, write to scope
+  const toScope = !!(mentionsScopeNameEquality(chain, scope) || mentionsExplicitScopeNameLiteral(chain, scope));
+  // Heuristic: if any clause explicitly references span.* fields (spanId/traceId/name) or prefix-less name equals span.name, write to span
+  let toSpan = false;
+  if (chain) {
+    const checks = [chain.first, ...chain.rest.map((c) => c.expr)];
+    toSpan = checks.some((c) => {
+      if (c.attribute === "spanId" || c.attribute === "traceId" || c.attribute === "parentSpanId" || c.attribute === "kind") return true;
+      if (c.attribute === "name" && String(span?.name ?? "") === String(c.value ?? "")) return true;
+      if (c.attribute.startsWith("span.")) return true;
+      return false;
+    });
+  }
+  return { toScope, toSpan };
 }
 
 
