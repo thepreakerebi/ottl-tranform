@@ -17,7 +17,7 @@ type Props = {
 };
 
 type LiteralType = "string" | "number" | "boolean";
-type ValueMode = "literal" | "fromAttr" | "substring";
+type ValueMode = "literal" | "substring";
 type CollisionPolicy = "upsert" | "skip" | "onlyIfMissing";
 type ScopeValue = "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
 
@@ -42,7 +42,6 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
 
   const isValid = key.trim().length > 0 && (
     (mode === "literal" && (literalType !== undefined)) ||
-    (mode === "fromAttr" && sourceAttr.trim().length > 0) ||
     (mode === "substring" && sourceAttr.trim().length > 0)
   );
 
@@ -120,10 +119,6 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
                   <Label htmlFor="mode-literal">Literal</Label>
                 </section>
                 <section className="flex items-center gap-2">
-                  <RadioGroupItem id="mode-from" value="fromAttr" />
-                  <Label htmlFor="mode-from">From attribute</Label>
-                </section>
-                <section className="flex items-center gap-2">
                   <RadioGroupItem id="mode-substring" value="substring" />
                   <Label htmlFor="mode-substring">Substring of attribute</Label>
                 </section>
@@ -141,11 +136,6 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
                     </Select>
                     <Input value={literalValue} onChange={(e) => setLiteralValue(e.target.value)} placeholder="value" className="flex-1 min-w-0" />
                   </section>
-                </section>
-              )}
-              {mode === "fromAttr" && (
-                <section className="space-y-2">
-                  <Input value={sourceAttr} onChange={(e) => setSourceAttr(e.target.value)} placeholder="Source attribute key" className="w-full" />
                 </section>
               )}
               {mode === "substring" && (
