@@ -25,7 +25,9 @@ export default function RightPanel() {
   const beforeStr = useMemo(() => pretty(current?.before), [current]);
   const afterStr = useMemo(() => pretty(current?.after), [current]);
   const afterHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
-  const firstChanged = useMemo(() => (afterHighlights.size ? Math.min(...Array.from(afterHighlights)) : null), [afterHighlights]);
+  const highlightList = useMemo(() => clusterHighlights(afterHighlights), [afterHighlights]);
+  const [jumpIndex, setJumpIndex] = useState(0);
+  // firstChanged retained conceptually; header button logic uses highlightList directly
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -74,11 +76,13 @@ export default function RightPanel() {
                   variant="ghost"
                   size="icon"
                   aria-label="Jump to first change"
-                  disabled={firstChanged === null}
+                  disabled={highlightList.length === 0}
                   onClick={() => {
-                    if (firstChanged === null) return;
-                    const el = contentRef.current?.querySelector(`[data-line="${firstChanged}"]`) as HTMLElement | null;
+                    if (highlightList.length === 0) return;
+                    const target = highlightList[jumpIndex] ?? highlightList[0];
+                    const el = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
                     el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    setJumpIndex((i) => (i + 1) % highlightList.length);
                   }}
                 >
                   <ArrowDown className="size-4" />
@@ -105,7 +109,7 @@ export default function RightPanel() {
                   <span role="status" aria-live="polite" className="text-[11px] text-green-600 ml-1">Copied!</span>
                 )}
               </section>
-              <span className="text-muted-foreground">{options[stepIndex]?.label}</span>
+              <span className="text-muted-foreground">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
             </div>
             {/* Scrollable JSON content */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef}>
@@ -161,4 +165,17 @@ function renderHighlighted(text: string, highlights: Set<number>) {
       ))}
     </section>
   );
+}
+
+function clusterHighlights(highlights: Set<number>): number[] {
+  const sorted = Array.from(highlights).sort((a, b) => a - b);
+  const clusters: number[] = [];
+  let prev: number | null = null;
+  for (const idx of sorted) {
+    if (prev === null || idx > prev + 1) {
+      clusters.push(idx);
+    }
+    prev = idx;
+  }
+  return clusters;
 }
