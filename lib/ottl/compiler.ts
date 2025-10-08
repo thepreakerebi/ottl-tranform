@@ -21,6 +21,9 @@ export function compileBlocksToOTTL(blocks: Block[]): string {
       case "maskAttribute":
         compileMaskAttribute(b, buckets);
         break;
+      case "renameAttribute":
+        compileRenameAttribute(b, buckets);
+        break;
       default:
         // unsupported in MVP
         break;
@@ -153,6 +156,38 @@ function compileMaskAttribute(block: Block, buckets: Buckets) {
 
   const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
   const lines = keys.map((k) => `- set(attributes[${JSON.stringify(k)}], ${compileMaskExpr(false, k, start, end)})${rootClause}`).join("\n        ");
+  buckets.trace.push(`context: span\n      statements:\n        ${lines}`);
+}
+
+function compileRenameAttribute(block: Block, buckets: Buckets) {
+  const cfg = block.config as Record<string, unknown>;
+  const scope = String(cfg.scope ?? "allSpans");
+  const keys: string[] = Array.isArray((cfg as { keys?: string[] }).keys) ? (cfg as { keys?: string[] }).keys || [] : [];
+  const newKey = String(cfg["newKey"] ?? "");
+  const chain = cfg["condition"] as ConditionChain | null | undefined;
+  const where = chain ? ` where ${compileWhere(chain)}` : "";
+  if (!keys.length || !newKey) return;
+
+  if (scope === "resource") {
+    const lines = keys.map((k) => `- set(resource.attributes[${JSON.stringify(newKey)}], resource.attributes[${JSON.stringify(k)}])\n        - delete_key(resource.attributes, ${JSON.stringify(k)})`).join("\n        ");
+    buckets.trace.push(`context: resource\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allDatapoints") {
+    const lines = keys.map((k) => `- set(attributes[${JSON.stringify(newKey)}], attributes[${JSON.stringify(k)}])\n        - delete_key(attributes, ${JSON.stringify(k)})`).join("\n        ");
+    buckets.metric.push(`context: datapoint\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allLogs") {
+    const lines = keys.map((k) => `- set(attributes[${JSON.stringify(newKey)}], attributes[${JSON.stringify(k)}])${where}\n        - delete_key(attributes, ${JSON.stringify(k)})${where}`).join("\n        ");
+    buckets.log.push(`context: log\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
+  const lines = keys.map((k) => `- set(attributes[${JSON.stringify(newKey)}], attributes[${JSON.stringify(k)}])${rootClause}\n        - delete_key(attributes, ${JSON.stringify(k)})${rootClause}`).join("\n        ");
   buckets.trace.push(`context: span\n      statements:\n        ${lines}`);
 }
 

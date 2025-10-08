@@ -48,6 +48,8 @@ export function runPipeline(telemetry: JSONValue, blocks: Block[]): RunResult {
       current = t3;
     } else if (b.type === "maskAttribute") {
       current = applyMaskAttribute(current, b.config as unknown as MaskAttrConfig);
+    } else if (b.type === "renameAttribute") {
+      current = applyRenameAttribute(current, b.config as unknown as RenameAttrConfig);
     }
     snapshots.push({ stepIndex: idx, before, after: clone(current) });
   });
@@ -106,6 +108,17 @@ type MaskAttrConfig = {
   keys: string[];
   substringStart: string;
   substringEnd?: string;
+  condition?: {
+    first: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue };
+    rest: Array<{ op: "AND" | "OR"; expr: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue } }>;
+  } | null;
+};
+
+// Rename attribute config
+type RenameAttrConfig = {
+  scope: "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
+  keys: string[];
+  newKey: string;
   condition?: {
     first: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue };
     rest: Array<{ op: "AND" | "OR"; expr: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue } }>;
@@ -485,6 +498,81 @@ function maskAttrs(target: AttributeContainer | undefined, cfg: MaskAttrConfig) 
     const masked = maskValue((v as Record<string, unknown>)[k] as JSONValue, start, end);
     kv.value = { stringValue: String(masked) };
   }
+}
+
+function renameAttrs(target: AttributeContainer | undefined, cfg: RenameAttrConfig) {
+  if (!target || !Array.isArray(target.attributes) || cfg.keys.length === 0 || !cfg.newKey) return;
+  const list: AttributeKV[] = target.attributes;
+  for (const kv of list) {
+    if (!cfg.keys.includes(kv.key)) continue;
+    // If destination already exists, we overwrite (simple policy for MVP)
+    kv.key = cfg.newKey;
+  }
+  target.attributes = list;
+}
+
+function applyRenameAttribute(telemetry: JSONValue, cfg: RenameAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  if (isTracesDoc(telemetry)) {
+    const t: TracesDoc = clone(telemetry);
+    for (const rs of t.resourceSpans ?? []) {
+      const resourceAttrs = arrayToMap(rs.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rs.scopeSpans ?? []).some((ss) => (ss.spans ?? []).some((sp) => evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs)));
+        if (hasMatch) renameAttrs(rs.resource, cfg);
+        continue;
+      }
+      for (const ss of rs.scopeSpans ?? []) {
+        for (const sp of ss.spans ?? []) {
+          const within = cfg.scope === "allSpans" || cfg.scope === "rootSpans" || cfg.scope === "conditional";
+          if (!within) continue;
+          if (!cfg.condition || evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs)) renameAttrs(sp, cfg);
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+
+  const logs = telemetry as unknown as LogsDoc;
+  if (Array.isArray(logs.resourceLogs)) {
+    const t: LogsDoc = clone(logs);
+    for (const rl of t.resourceLogs ?? []) {
+      const resourceAttrs = arrayToMap(rl.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rl.scopeLogs ?? []).some((sl) => (sl.logRecords ?? []).some((lr) => evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)));
+        if (hasMatch) renameAttrs(rl.resource, cfg);
+        continue;
+      }
+      for (const sl of rl.scopeLogs ?? []) {
+        for (const lr of sl.logRecords ?? []) {
+          if (!cfg.condition || evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)) renameAttrs(lr, cfg);
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+
+  const metrics = telemetry as unknown as MetricsDoc;
+  if (Array.isArray(metrics.resourceMetrics)) {
+    const t: MetricsDoc = clone(metrics);
+    for (const rm of t.resourceMetrics ?? []) {
+      const resourceAttrs = arrayToMap(rm.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rm.scopeMetrics ?? []).some((sm) => (sm.metrics ?? []).some((m) => datapointsOf(m).some((dp) => evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs))));
+        if (hasMatch) renameAttrs(rm.resource, cfg);
+        continue;
+      }
+      for (const sm of rm.scopeMetrics ?? []) {
+        for (const m of sm.metrics ?? []) {
+          for (const dp of datapointsOf(m)) {
+            if (!cfg.condition || evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs)) renameAttrs(dp, cfg);
+          }
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+  return telemetry;
 }
 
 function coerceLiteral(type: AddAttrConfig["literalType"], raw: string): JSONValue {
