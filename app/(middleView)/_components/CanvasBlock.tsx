@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { typeToDescription } from "../../../lib/ottl/blockCatalog";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import AddAttributeBlockConfiguration from "./AddAttributeBlockConfiguration";
+import RemoveAttributeBlockConfiguration from "./RemoveAttributeBlockConfiguration";
 import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 import { useState } from "react";
 
@@ -95,6 +96,31 @@ export default function CanvasBlock({ id, index, type, icon, configuredSummary, 
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[300px]">
                   <AddAttributeBlockConfiguration
+                    signal={normalizeSignal(detectedSignal)}
+                    description={typeToDescription[type] || ""}
+                    initialConfig={initialConfig}
+                    onApply={(summary, config) => {
+                      onApplyConfig?.(summary, config);
+                      setOpen(false);
+                    }}
+                    onCancel={() => setOpen(false)}
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : type === "removeAttribute" ? (
+              <Popover open={open} onOpenChange={(newOpen) => {
+                if (!newOpen) {
+                  return;
+                }
+                setOpen(newOpen);
+              }}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" className="inline-flex items-center gap-2" onClick={() => setOpen(true)}>
+                    <Settings className="size-4" /> Configure
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[300px]">
+                  <RemoveAttributeBlockConfiguration
                     signal={normalizeSignal(detectedSignal)}
                     description={typeToDescription[type] || ""}
                     initialConfig={initialConfig}
