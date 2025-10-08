@@ -70,7 +70,8 @@ export default function CanvasView() {
                   const id = `${b.type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
                   addBlock({ ...b, id });
                 }}
-                onConfigure={() => updateBlock(b.id, { /* config modal to wire later */ })}
+                onConfigure={() => updateBlock(b.id, { /* placeholder */ })}
+                onApplyConfig={(summary, config) => updateBlock(b.id, { config, errors: undefined })}
               />
             ))}
           </section>

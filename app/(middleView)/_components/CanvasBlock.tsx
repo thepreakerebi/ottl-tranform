@@ -5,6 +5,9 @@ import { Button } from "../../../components/ui/button";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { typeToDescription } from "../../../lib/ottl/blockCatalog";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import AddAttributeBlockConfiguration from "./AddAttributeBlockConfiguration";
+import { useState } from "react";
 
 type Props = {
   id: string;
@@ -14,11 +17,12 @@ type Props = {
   icon?: React.ReactNode;
   configuredSummary?: string; // when configured, show this instead of the tooltip description
   onConfigure?: () => void;
+  onApplyConfig?: (summary: string, config: Record<string, unknown>) => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
 };
 
-export default function CanvasBlock({ id, index, type, signal, icon, configuredSummary, onConfigure, onDuplicate, onDelete }: Props) {
+export default function CanvasBlock({ id, index, type, signal, icon, configuredSummary, onConfigure, onApplyConfig, onDuplicate, onDelete }: Props) {
   const title = humanizeType(type);
   const description = configuredSummary || typeToDescription[type] || "";
   const sortable = useSortable({ id });
@@ -26,6 +30,7 @@ export default function CanvasBlock({ id, index, type, signal, icon, configuredS
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
   } as React.CSSProperties;
+  const [open, setOpen] = useState(false);
 
   return (
     <article aria-label={title} ref={sortable.setNodeRef} style={style} className="rounded-lg bg-secondary text-secondary-foreground p-4">
@@ -65,14 +70,47 @@ export default function CanvasBlock({ id, index, type, signal, icon, configuredS
           </header>
           <p className="mt-4 text-base">{description}</p>
           <section className="mt-4">
-            <Button type="button" onClick={onConfigure} variant="outline" className="inline-flex items-center gap-2">
-              <Settings className="size-4" /> Configure
-            </Button>
+            {type === "addAttribute" ? (
+              <Popover open={open} onOpenChange={(newOpen) => {
+                // Only allow closing, not opening via onOpenChange
+                if (!newOpen) {
+                  // Don't close automatically - only allow manual close via buttons
+                  return;
+                }
+                setOpen(newOpen);
+              }}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" className="inline-flex items-center gap-2" onClick={() => setOpen(true)}>
+                    <Settings className="size-4" /> Configure
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[300px]">
+                  <AddAttributeBlockConfiguration
+                    signal={normalizeSignal(signal)}
+                    description={typeToDescription[type] || ""}
+                    onApply={(summary, config) => {
+                      onApplyConfig?.(summary, config);
+                      setOpen(false);
+                    }}
+                    onCancel={() => setOpen(false)}
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Button type="button" onClick={onConfigure} variant="outline" className="inline-flex items-center gap-2">
+                <Settings className="size-4" /> Configure
+              </Button>
+            )}
           </section>
         </section>
       </section>
     </article>
   );
+}
+
+function normalizeSignal(signal: string): "traces" | "logs" | "metrics" | "general" | "unknown" {
+  if (signal === "traces" || signal === "logs" || signal === "metrics" || signal === "general" || signal === "unknown") return signal;
+  return "unknown";
 }
 
 function humanizeType(type: string) {

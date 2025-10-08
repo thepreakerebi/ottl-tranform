@@ -26,7 +26,7 @@ export default function BottomBar() {
               <Button
                 type="button"
                 variant={active === "canvas" ? "secondary" : "ghost"}
-                className="rounded-[16px] px-2 py-1"
+                className="rounded-[6px] px-2 py-1"
                 onClick={() => setActive("canvas")}
               >
                 Canvas
@@ -36,7 +36,7 @@ export default function BottomBar() {
               <Button
                 type="button"
                 variant={active === "raw-ottl" ? "secondary" : "ghost"}
-                className="rounded-[16px] px-2 py-1"
+                className="rounded-[6px] px-2 py-1"
                 onClick={() => setActive("raw-ottl")}
               >
                 Raw OTTL
@@ -48,7 +48,7 @@ export default function BottomBar() {
           type="button"
           onClick={handleRun}
           aria-busy={isRunning}
-          className="rounded-[16px] px-4 py-2 inline-flex items-center gap-2"
+          className="rounded-[6px] px-4 py-2 inline-flex items-center gap-2"
         >
           {isRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
           {isRunning ? "Running…" : "Run Transformation"}
