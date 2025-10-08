@@ -16,6 +16,7 @@ type Props = {
   description?: string;
   onApply: (summary: string, config: Record<string, unknown>) => void;
   onCancel?: () => void;
+  initialConfig?: Record<string, unknown>;
 };
 
 type LiteralType = "string" | "number" | "boolean";
@@ -23,7 +24,7 @@ type ValueMode = "literal" | "substring";
 type CollisionPolicy = "upsert" | "skip" | "onlyIfMissing";
 type ScopeValue = "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
 
-export default function AddAttributeBlockConfiguration({ signal, description: helpText, onApply, onCancel }: Props) {
+export default function AddAttributeBlockConfiguration({ signal, description: helpText, onApply, onCancel, initialConfig }: Props) {
   const scopes = useMemo(() => getScopes(signal), [signal]);
   const [scope, setScope] = useState<ScopeValue>(scopes[0]?.value ?? "resource");
   const [key, setKey] = useState("");
@@ -53,6 +54,29 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
       // Keep it around but it's ignored unless conditional; no action
     }
   }, [scope, condition]);
+
+  // Hydrate from initialConfig when provided (e.g., opening an existing block)
+  useEffect(() => {
+    if (!initialConfig) return;
+    const ic = initialConfig as Record<string, unknown>;
+    if (typeof ic["key"] === "string") setKey(ic["key"] as string);
+    if (typeof ic["scope"] === "string") setScope(ic["scope"] as ScopeValue);
+    if (typeof ic["mode"] === "string") setMode(ic["mode"] as ValueMode);
+    if (typeof ic["literalType"] === "string") setLiteralType(ic["literalType"] as LiteralType);
+    if (typeof ic["literalValue"] === "string") setLiteralValue(ic["literalValue"] as string);
+    if (typeof ic["sourceAttr"] === "string") setSourceAttr(ic["sourceAttr"] as string);
+    if (typeof ic["substringStart"] === "string") setSubstringStart(ic["substringStart"] as string);
+    if (typeof ic["substringEnd"] === "string") setSubstringEnd(ic["substringEnd"] as string);
+    if (typeof ic["collision"] === "string") setCollision(ic["collision"] as CollisionPolicy);
+    if (ic["condition"]) {
+      try {
+        const c = ic["condition"] as ConditionChain;
+        if (c && c.first && typeof c.first === "object") setCondition(c);
+      } catch {
+        // ignore bad shape
+      }
+    }
+  }, [initialConfig]);
 
   const isValidValue = (mode === "literal" && (literalType !== undefined)) || (mode === "substring" && sourceAttr.trim().length > 0);
   const isValidCondition = scope !== "conditional" || (condition !== null && validateChain(condition));

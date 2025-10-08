@@ -10,6 +10,12 @@ import AddAttributeBlockConfiguration from "./AddAttributeBlockConfiguration";
 import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 import { useState } from "react";
 
+declare global {
+  interface Window {
+    __pipelineBlocks?: Record<string, { config: Record<string, unknown> }>;
+  }
+}
+
 type Props = {
   id: string;
   index?: number;
@@ -21,9 +27,10 @@ type Props = {
   onApplyConfig?: (summary: string, config: Record<string, unknown>) => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  initialConfig?: Record<string, unknown>;
 };
 
-export default function CanvasBlock({ id, index, type, icon, configuredSummary, onConfigure, onApplyConfig, onDuplicate, onDelete }: Props) {
+export default function CanvasBlock({ id, index, type, icon, configuredSummary, onConfigure, onApplyConfig, onDuplicate, onDelete, initialConfig }: Props) {
   const title = humanizeType(type);
   const description = configuredSummary || typeToDescription[type] || "";
   const sortable = useSortable({ id });
@@ -90,6 +97,7 @@ export default function CanvasBlock({ id, index, type, icon, configuredSummary, 
                   <AddAttributeBlockConfiguration
                     signal={normalizeSignal(detectedSignal)}
                     description={typeToDescription[type] || ""}
+                    initialConfig={initialConfig}
                     onApply={(summary, config) => {
                       onApplyConfig?.(summary, config);
                       setOpen(false);

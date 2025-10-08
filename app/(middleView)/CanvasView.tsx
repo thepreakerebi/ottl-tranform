@@ -71,6 +71,7 @@ export default function CanvasView() {
                 type={b.type}
                 signal={b.signal}
                 configuredSummary={b.summary}
+                initialConfig={b.config}
                 icon={iconForType(b.type)}
                 onDelete={() => removeBlock(b.id)}
                 onDuplicate={() => {
