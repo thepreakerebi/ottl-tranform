@@ -5,7 +5,7 @@ import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
-import { ArrowDown, Copy } from "lucide-react";
+import { ArrowDown, Copy, ChevronDown, ChevronUp } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { toast } from "sonner";
 
@@ -38,18 +38,47 @@ export default function RightPanel() {
   const [jumpIndex, setJumpIndex] = useState(0);
   // firstChanged retained conceptually; header button logic uses highlightList directly
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const beforeContentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
+  const [beforeExpanded, setBeforeExpanded] = useState(true);
 
-  // After a run, auto-jump to the first change cluster once
+  // Shared function to jump to transformation points in both sections
+  const jumpToTransformationPoint = () => {
+    if (highlightList.length === 0) return;
+    const target = highlightList[jumpIndex] ?? highlightList[0];
+    
+    // Jump in After section
+    const afterEl = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+    afterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    
+    // Jump in Before section (if expanded)
+    if (beforeExpanded && beforeContentRef.current) {
+      const beforeEl = beforeContentRef.current.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+      beforeEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    
+    setJumpIndex((i) => (i + 1) % highlightList.length);
+  };
+
+  // After a run, auto-jump to the first change cluster once in both sections
   useEffect(() => {
     if (!shouldAutoJump || highlightList.length === 0) return;
     const target = highlightList[0];
-    const el = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    
+    // Auto-jump in After section
+    const afterEl = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+    afterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    
+    // Auto-jump in Before section (if expanded)
+    if (beforeExpanded && beforeContentRef.current) {
+      const beforeEl = beforeContentRef.current.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+      beforeEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    
     setAutoJump(false);
   // We intentionally depend only on shouldAutoJump + list length so the deps array size is stable across renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldAutoJump, highlightList.length]);
+  }, [shouldAutoJump, highlightList.length, beforeExpanded]);
 
   // When new snapshots arrive (e.g., after Run), default to the last step.
   useEffect(() => {
@@ -87,23 +116,17 @@ export default function RightPanel() {
           </div>
         ) : (
           <div className="h-full flex flex-col">
-            {/* Fixed output header */}
+            {/* Fixed After header */}
             <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
               <section className="flex items-center gap-1">
-                <span>Output</span>
+                <span>After</span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   aria-label="Jump to first change"
                   disabled={highlightList.length === 0}
-                  onClick={() => {
-                    if (highlightList.length === 0) return;
-                    const target = highlightList[jumpIndex] ?? highlightList[0];
-                    const el = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
-                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    setJumpIndex((i) => (i + 1) % highlightList.length);
-                  }}
+                  onClick={jumpToTransformationPoint}
                 >
                   <ArrowDown className="size-4" />
                 </Button>
@@ -131,7 +154,7 @@ export default function RightPanel() {
               </section>
               <span className="text-muted-foreground">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
             </div>
-            {/* Scrollable JSON content */}
+            {/* After section - takes half the remaining height */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
               <div className="p-4">
                 <TooltipProvider>
@@ -139,6 +162,43 @@ export default function RightPanel() {
                 </TooltipProvider>
               </div>
             </div>
+            
+            {/* Before section header */}
+            <div className="px-4 py-2 border-t border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
+              <section className="flex items-center gap-1">
+                <span>Before</span>
+                {beforeExpanded && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Jump to first change"
+                    disabled={highlightList.length === 0}
+                    onClick={jumpToTransformationPoint}
+                  >
+                    <ArrowDown className="size-4" />
+                  </Button>
+                )}
+              </section>
+              <button
+                type="button"
+                aria-expanded={beforeExpanded}
+                onClick={() => setBeforeExpanded((v) => !v)}
+                className="rounded px-2 py-1 text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+              >
+                {beforeExpanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                <span className="sr-only">Toggle before section</span>
+              </button>
+            </div>
+            
+            {/* Before section - takes the other half of the remaining height when expanded */}
+            {beforeExpanded && (
+              <div className="flex-1 min-h-0 overflow-auto" ref={beforeContentRef}>
+                <div className="p-4">
+                  {renderPlainWithLineNumbers(beforeStr)}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -209,6 +269,28 @@ function renderHighlighted(text: string, highlights: { added: Set<number>; remov
         ) : (
           <div key={i} data-line={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.added.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
         )
+      ))}
+    </section>
+  );
+}
+
+function renderPlain(text: string) {
+  const lines = text.split("\n");
+  return (
+    <section>
+      {lines.map((ln, i) => (
+        <div key={i} className="text-xs leading-5 font-mono whitespace-pre">{ln || "\u00A0"}</div>
+      ))}
+    </section>
+  );
+}
+
+function renderPlainWithLineNumbers(text: string) {
+  const lines = text.split("\n");
+  return (
+    <section>
+      {lines.map((ln, i) => (
+        <div key={i} data-line={i} className="text-xs leading-5 font-mono whitespace-pre">{ln || "\u00A0"}</div>
       ))}
     </section>
   );
