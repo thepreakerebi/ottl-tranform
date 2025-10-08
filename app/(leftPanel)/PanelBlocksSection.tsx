@@ -50,6 +50,7 @@ export default function PanelBlocksSection() {
   const [expanded, setExpanded] = useState(true);
   const addBlock = usePipelineStore((s) => s.addBlock);
   const signal = useTelemetryStore((s) => s.signal);
+  const hasTelemetry = useTelemetryStore((s) => !!s.parsed);
 
   function createBlock(type: string, groupTitle: GroupTitle): Block {
     const id = `${type}-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
@@ -65,7 +66,7 @@ export default function PanelBlocksSection() {
 
   function onSelectBlock(name: string, groupTitle: GroupTitle) {
     const type = labelToType[name];
-    if (!type) return;
+    if (!type || !hasTelemetry) return;
     const block = createBlock(type, groupTitle);
     addBlock(block);
   }
@@ -93,11 +94,12 @@ export default function PanelBlocksSection() {
               <ul className="space-y-1">
                 {g.items.map((b) => {
                   const isGeneral = g.title === "General";
-                  const allowed =
+                  const allowed = hasTelemetry && (
                     signal === "unknown" || isGeneral ||
                     (signal === "traces" && g.title === "Traces") ||
                     (signal === "metrics" && g.title === "Metrics") ||
-                    (signal === "logs" && g.title === "Logs");
+                    (signal === "logs" && g.title === "Logs")
+                  );
                   return (
                     <PanelBlock
                       key={b.name}
