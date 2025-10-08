@@ -1,14 +1,91 @@
 "use client";
 
+import { useMemo } from "react";
+import { usePreviewStore } from "../../lib/stores/previewStore";
+import { usePipelineStore } from "../../lib/stores/pipelineStore";
+import { ScrollArea } from "../../components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+
 export default function RightPanel() {
+  const snapshots = usePreviewStore((s) => s.snapshots);
+  const stepIndex = usePreviewStore((s) => s.stepIndex);
+  const setStepIndex = usePreviewStore((s) => s.setStepIndex);
+  const blocks = usePipelineStore((s) => s.blocks);
+
+  const options = useMemo(() => {
+    return snapshots.map((s) => {
+      const label = blockLabel(blocks[s.stepIndex]?.type ?? "", s.stepIndex);
+      return { value: String(s.stepIndex), label };
+    });
+  }, [snapshots, blocks]);
+
+  const current = snapshots[stepIndex];
+
   return (
-    <aside aria-label="Preview panel" className="h-full border-l">
-      <section className="p-4 overflow-auto h-full">
-        <h2 className="text-sm font-semibold mb-2">Preview</h2>
-        <p className="text-muted-foreground">Side‑by‑side diff preview will appear here.</p>
-      </section>
+    <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
+      {/* Fixed header - never scrolls */}
+      <header className="flex items-center justify-between gap-3 p-4 border-b flex-shrink-0">
+        <h2 className="text-sm font-semibold">Preview</h2>
+        {snapshots.length > 0 && (
+          <nav aria-label="Step selector">
+            <Select value={String(stepIndex)} onValueChange={(v) => setStepIndex(Number(v))}>
+              <SelectTrigger className="min-w-[220px]">
+                <SelectValue placeholder="Select step" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </nav>
+        )}
+      </header>
+
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {snapshots.length === 0 ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            Run the transformation to see the preview here.
+          </div>
+        ) : (
+          <div className="h-full flex flex-col">
+            {/* Fixed output header */}
+            <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
+              <span>Output</span>
+              <span className="text-muted-foreground">{options[stepIndex]?.label}</span>
+            </div>
+            {/* Scrollable JSON content */}
+            <div className="flex-1 min-h-0 overflow-auto">
+              <div className="p-4">
+                <pre className="text-xs leading-5 whitespace-pre-wrap font-mono">
+                  {pretty(current?.after)}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }
 
+function blockLabel(type: string, idx: number) {
+  const title = humanizeType(type || "Step");
+  return `Step ${idx + 1}: ${title}`;
+}
 
+function humanizeType(type: string) {
+  return type
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function pretty(v: unknown) {
+  if (v == null) return "";
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
