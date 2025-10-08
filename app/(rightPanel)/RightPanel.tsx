@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
-import { ScrollArea } from "../../components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
 export default function RightPanel() {
@@ -20,6 +19,9 @@ export default function RightPanel() {
   }, [snapshots, blocks]);
 
   const current = snapshots[stepIndex];
+  const beforeStr = useMemo(() => pretty(current?.before), [current]);
+  const afterStr = useMemo(() => pretty(current?.after), [current]);
+  const afterHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
@@ -58,9 +60,7 @@ export default function RightPanel() {
             {/* Scrollable JSON content */}
             <div className="flex-1 min-h-0 overflow-auto">
               <div className="p-4">
-                <pre className="text-xs leading-5 whitespace-pre-wrap font-mono">
-                  {pretty(current?.after)}
-                </pre>
+                {renderHighlighted(afterStr, afterHighlights)}
               </div>
             </div>
           </div>
@@ -88,4 +88,27 @@ function pretty(v: unknown) {
   } catch {
     return String(v);
   }
+}
+
+function computeHighlights(beforeText: string, afterText: string) {
+  const beforeSet = new Set(beforeText.split("\n"));
+  const highlights = new Set<number>();
+  const lines = afterText.split("\n");
+  lines.forEach((line, idx) => {
+    if (!beforeSet.has(line)) {
+      highlights.add(idx);
+    }
+  });
+  return highlights;
+}
+
+function renderHighlighted(text: string, highlights: Set<number>) {
+  const lines = text.split("\n");
+  return (
+    <section>
+      {lines.map((ln, i) => (
+        <div key={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
+      ))}
+    </section>
+  );
 }
