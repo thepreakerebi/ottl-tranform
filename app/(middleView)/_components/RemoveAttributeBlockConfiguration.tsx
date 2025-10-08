@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
-import { PopoverHeader, PopoverBody, PopoverFooter, PopoverSeparator } from "../../../components/ui/popover";
+import { PopoverHeader, PopoverBody, PopoverFooter, PopoverSeparator, Popover, PopoverTrigger, PopoverContent } from "../../../components/ui/popover";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Separator } from "../../../components/ui/separator";
@@ -10,6 +10,8 @@ import TargetLevelSelect from "./TargetLevelSelect";
 import type { ConditionChain } from "../../../lib/ottl/types";
 import ConditionChainBuilder from "./ConditionChainBuilder";
 import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../../../components/ui/command";
+import { Check } from "lucide-react";
 
 type ScopeValue = import("./TargetLevelSelect").ScopeValue;
 
@@ -28,6 +30,8 @@ export default function RemoveAttributeBlockConfiguration({ signal, description:
   const [inputKey, setInputKey] = useState("");
   const [condition, setCondition] = useState<ConditionChain | null>(null);
   const parsed = useTelemetryStore((s) => s.parsed);
+  const [comboOpen, setComboOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   if (!scopes.some((s) => s.value === scope)) setScope(scopes[0]?.value ?? "resource");
 
@@ -87,22 +91,65 @@ export default function RemoveAttributeBlockConfiguration({ signal, description:
         <Separator />
         <section className="space-y-2">
           <Label className="text-xs font-medium">Attribute Key(s) to Remove</Label>
-          {discovered.length > 0 && (
-            <section className="flex flex-wrap gap-2" aria-label="Discovered keys">
-              {discovered.map((k) => (
-                <Button key={k} type="button" variant={keys.includes(k) ? "default" : "outline"} size="sm" onClick={() => addKey(k)}>
-                  {k}
-                </Button>
-              ))}
-            </section>
-          )}
+          <Popover open={comboOpen} onOpenChange={setComboOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" role="combobox" aria-expanded={comboOpen} className="w-full justify-between">
+                {keys.length === 0 ? "Select keys" : `${keys.length} selected`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0">
+              <Command>
+                <CommandInput placeholder="Search keys..." value={query} onValueChange={setQuery} />
+                <CommandEmpty>No keys found.</CommandEmpty>
+                <CommandList>
+                  <CommandGroup heading="Discovered">
+                    {discovered.map((k) => (
+                      <CommandItem
+                        key={k}
+                        value={k}
+                        onSelect={() => {
+                          if (keys.includes(k)) {
+                            removeKey(k);
+                          } else {
+                            addKey(k);
+                          }
+                        }}
+                      >
+                        <span className="flex-1 truncate">{k}</span>
+                        {keys.includes(k) && <Check className="ml-2 size-4" aria-hidden />}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                  {query.trim().length > 0 && !keys.includes(query.trim()) && !discovered.includes(query.trim()) && (
+                    <CommandGroup heading="Add custom">
+                      <CommandItem
+                        value={`__add__${query.trim()}`}
+                        onSelect={() => {
+                          addKey(query.trim());
+                          setQuery("");
+                        }}
+                      >
+                        Add &quot;{query.trim()}&quot;
+                      </CommandItem>
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <section className="flex items-center gap-2">
-            <Input value={inputKey} onChange={(e) => setInputKey(e.target.value)} placeholder="Type and press Enter to add" className="flex-1" onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addKey(inputKey);
-              }
-            }} />
+            <Input
+              value={inputKey}
+              onChange={(e) => setInputKey(e.target.value)}
+              placeholder="Type and press Enter to add"
+              className="flex-1"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addKey(inputKey);
+                }
+              }}
+            />
             <Button type="button" variant="outline" onClick={() => addKey(inputKey)}>Add</Button>
           </section>
           {keys.length > 0 && (
