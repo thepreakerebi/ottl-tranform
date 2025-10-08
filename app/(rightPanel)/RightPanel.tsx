@@ -6,6 +6,7 @@ import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
 import { ArrowDown, Copy } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { toast } from "sonner";
 
 export default function RightPanel() {
@@ -133,7 +134,9 @@ export default function RightPanel() {
             {/* Scrollable JSON content */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
               <div className="p-4">
-                {renderHighlighted(afterStr, diffHighlights)}
+                <TooltipProvider>
+                  {renderHighlighted(afterStr, diffHighlights)}
+                </TooltipProvider>
               </div>
             </div>
           </div>
@@ -169,6 +172,7 @@ function computeHighlights(beforeText: string, afterText: string) {
   const beforeSet = new Set(beforeLines);
   const added = new Set<number>();
   const removed = new Set<number>();
+  const removedMap = new Map<number, string>();
   // Added lines = those present in after but not in before
   afterLines.forEach((line, idx) => {
     if (!beforeSet.has(line)) added.add(idx);
@@ -177,22 +181,34 @@ function computeHighlights(beforeText: string, afterText: string) {
   const afterSet = new Set(afterLines);
   beforeLines.forEach((line, idx) => {
     if (!afterSet.has(line)) removed.add(Math.min(idx, afterLines.length - 1));
+    if (!afterSet.has(line)) removedMap.set(Math.min(idx, afterLines.length - 1), line);
   });
-  return { added, removed };
+  return { added, removed, removedMap };
 }
 
-function renderHighlighted(text: string, highlights: { added: Set<number>; removed: Set<number> }) {
+function renderHighlighted(text: string, highlights: { added: Set<number>; removed: Set<number>; removedMap?: Map<number, string> }) {
   const lines = text.split("\n");
   return (
     <section>
       {lines.map((ln, i) => (
-        <div
-          key={i}
-          data-line={i}
-          className={`text-xs leading-5 font-mono whitespace-pre ${highlights.added.has(i) ? "bg-green-400" : highlights.removed.has(i) ? "bg-red-300" : ""}`}
-        >
-          {ln || "\u00A0"}
-        </div>
+        highlights.removed.has(i) ? (
+          <Tooltip key={i}>
+            <TooltipTrigger asChild>
+              <div
+                data-line={i}
+                tabIndex={0}
+                className={`text-xs leading-5 font-mono whitespace-pre bg-red-300 outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500`}
+              >
+                {ln || "\u00A0"}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <span className="text-xs">Previously: {highlights.removedMap?.get(i) ?? "(unknown)"}</span>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <div key={i} data-line={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.added.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
+        )
       ))}
     </section>
   );
