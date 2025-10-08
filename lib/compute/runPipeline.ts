@@ -31,7 +31,11 @@ export function runPipeline(telemetry: JSONValue, blocks: Block[]): RunResult {
       return;
     }
     if (b.type === "addAttribute") {
-      current = applyAddAttribute(current, b.config as unknown as AddAttrConfig);
+      // traces
+      const t1 = applyAddAttribute(current, b.config as unknown as AddAttrConfig);
+      // logs
+      const t2 = applyAddAttributeLogs(t1, b.config as unknown as AddAttrConfig);
+      current = t2;
     }
     snapshots.push({ stepIndex: idx, before, after: clone(current) });
   });
@@ -48,6 +52,17 @@ type ScopeSpans = { scope?: Scope; spans?: Span[] };
 type Resource = AttributeContainer;
 type ResourceSpans = { resource?: Resource; scopeSpans?: ScopeSpans[] };
 type TracesDoc = { resourceSpans?: ResourceSpans[] };
+
+// Logs model (minimal)
+type LogRecord = AttributeContainer & {
+  timeUnixNano?: string;
+  severityText?: string;
+  severityNumber?: number;
+  body?: Record<string, unknown> | string;
+};
+type ScopeLogs = { scope?: Scope; logRecords?: LogRecord[] };
+type ResourceLogs = { resource?: Resource; scopeLogs?: ScopeLogs[] };
+type LogsDoc = { resourceLogs?: ResourceLogs[] };
 
 function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
   if (!isObj(telemetry)) return telemetry;
@@ -77,6 +92,31 @@ function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue 
         } else {
           upsertAttr(sp, cfg, resourceAttrs);
         }
+      }
+    }
+  }
+  return t as unknown as JSONValue;
+}
+
+// Apply for logs (resource + log records)
+function applyAddAttributeLogs(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  const doc = telemetry as unknown as LogsDoc;
+  if (!Array.isArray(doc.resourceLogs)) return telemetry;
+  const t: LogsDoc = clone(doc);
+  for (const rl of t.resourceLogs ?? []) {
+    const resourceAttrs = arrayToMap(rl.resource?.attributes);
+    if (cfg.scope === "resource") {
+      const hasMatch = !cfg.condition || (rl.scopeLogs ?? []).some((sl) => (sl.logRecords ?? []).some((lr) => evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)));
+      if (hasMatch) upsertAttr(rl.resource, cfg, resourceAttrs);
+      continue;
+    }
+    // allLogs / conditional
+    for (const sl of rl.scopeLogs ?? []) {
+      for (const lr of sl.logRecords ?? []) {
+        const ok = !cfg.condition || evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs);
+        if (!ok) continue;
+        upsertAttr(lr, cfg, resourceAttrs);
       }
     }
   }
@@ -168,6 +208,76 @@ function evaluateCmp(cmp: NonNullable<AddAttrConfig["condition"]>["first"], item
     case "regex":
       try { return new RegExp(String(cmp.value ?? "")).test(String(left)); } catch { return false; }
   }
+}
+
+// Logs chain/eval
+function evaluateChainLogs(chain: AddAttrConfig["condition"], item: LogRecord, scope: Scope | undefined, resourceAttrs?: Record<string, JSONValue>): boolean {
+  if (!chain) return true;
+  const first = evaluateCmpLog(chain.first, item, scope, resourceAttrs);
+  return chain.rest.reduce((acc, clause) => {
+    const rhs = evaluateCmpLog(clause.expr, item, scope, resourceAttrs);
+    return clause.op === "AND" ? (acc && rhs) : (acc || rhs);
+  }, first);
+}
+
+function evaluateCmpLog(cmp: NonNullable<AddAttrConfig["condition"]>["first"], item: LogRecord, scope: Scope | undefined, resourceAttrs?: Record<string, JSONValue>): boolean {
+  const left = resolveLog(item, scope, cmp.attribute, resourceAttrs);
+  switch (cmp.operator) {
+    case "exists":
+      return left !== undefined && left !== null && String(left).length > 0;
+    case "eq":
+      return String(left) === String(cmp.value ?? "");
+    case "neq":
+      return String(left) !== String(cmp.value ?? "");
+    case "contains":
+      return String(left).includes(String(cmp.value ?? ""));
+    case "starts":
+      return String(left).startsWith(String(cmp.value ?? ""));
+    case "regex":
+      try { return new RegExp(String(cmp.value ?? "")).test(String(left)); } catch { return false; }
+  }
+}
+
+function resolveLog(item: LogRecord, scope: Scope | undefined, field: string, resourceAttrs?: Record<string, JSONValue>): JSONValue | undefined {
+  const f = (field || "").trim();
+  if (!f) return undefined;
+  if (f.startsWith("resource.")) {
+    const p = f.slice("resource.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m && resourceAttrs) return resourceAttrs[m[1]];
+    }
+    return getByPath((item as unknown as { resource?: Record<string, unknown> })?.resource as Record<string, unknown> | undefined, p);
+  }
+  if (f.startsWith("scope.")) {
+    const p = f.slice("scope.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m) return findAttr(scope?.attributes, m[1]);
+    }
+    return getByPath(scope as unknown as Record<string, unknown> | undefined, p);
+  }
+  if (f.startsWith("log.")) {
+    const p = f.slice("log.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m) return findAttr(item.attributes, m[1]);
+    }
+    return getByPath(item as unknown as Record<string, unknown>, p);
+  }
+  if (f === "severityText") return item.severityText as unknown as JSONValue;
+  if (f === "severityNumber") return item.severityNumber as unknown as JSONValue;
+  if (f === "body") {
+    if (typeof item.body === "string") return item.body as unknown as JSONValue;
+    if (item.body && typeof item.body === "object") {
+      const k = Object.keys(item.body)[0];
+      return (item.body as Record<string, unknown>)[k] as JSONValue;
+    }
+  }
+  const fromLogAttr = findAttr(item.attributes, f);
+  if (fromLogAttr !== undefined) return fromLogAttr;
+  if (resourceAttrs && f in resourceAttrs) return resourceAttrs[f];
+  return getByPath(item as unknown as Record<string, unknown>, f);
 }
 
 function resolveField(item: Span, scope: Scope | undefined, field: string, resourceAttrs?: Record<string, JSONValue>): JSONValue | undefined {
@@ -279,6 +389,8 @@ function clone<T>(v: T): T {
 function isTracesDoc(v: unknown): v is TracesDoc {
   return isObj(v) && Array.isArray((v as Record<string, unknown>).resourceSpans);
 }
+
+// (helper reserved for future routing across signals)
 
 function getByPath(obj: Record<string, unknown> | undefined, path: string): JSONValue | undefined {
   if (!obj) return undefined;
