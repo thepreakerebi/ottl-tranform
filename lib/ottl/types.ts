@@ -79,7 +79,6 @@ export type ConditionNode = ConditionGroup | ConditionComparison;
 export interface ConditionGroup {
   kind: "group";
   op: "AND" | "OR";
-  not?: boolean;
   children: ConditionNode[];
 }
 
@@ -89,5 +88,16 @@ export interface ConditionComparison {
   operator: ConditionOperator;
   // When operator requires a value (not exists), this is provided
   value?: JSONValue;
+}
+
+// Flat chained conditions for MVP (no groups/NOT)
+export interface ConditionChainClause {
+  op: "AND" | "OR";
+  expr: ConditionComparison;
+}
+
+export interface ConditionChain {
+  first: ConditionComparison;
+  rest: ConditionChainClause[];
 }
 

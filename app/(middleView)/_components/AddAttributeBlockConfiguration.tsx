@@ -8,8 +8,8 @@ import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
-import type { ConditionGroup, ConditionNode, ConditionComparison } from "../../../lib/ottl/types";
-import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
+import type { ConditionChain, ConditionChainClause, ConditionComparison } from "../../../lib/ottl/types";
+// import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 
 type Props = {
   signal: "traces" | "logs" | "metrics" | "general" | "unknown";
@@ -34,10 +34,8 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
   const [substringStart, setSubstringStart] = useState("0");
   const [substringEnd, setSubstringEnd] = useState("");
   const [collision, setCollision] = useState<CollisionPolicy>("upsert");
-  const [condition, setCondition] = useState<ConditionGroup | null>(null);
-  const parsedTelemetry = useTelemetryStore((s) => s.parsed);
-
-  const suggestions = useMemo(() => buildAttributeSuggestions(parsedTelemetry, signal, 100), [parsedTelemetry, signal]);
+  const [condition, setCondition] = useState<ConditionChain | null>(null);
+  // We no longer surface verbose suggestions; allow free typing for "where" field
 
   // Ensure the selected scope remains valid if signal changes
   if (!scopes.some((s) => s.value === scope)) {
@@ -46,12 +44,10 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
     setScope(scopes[0]?.value ?? "resource");
   }
 
-  // Initialize a default condition group when switching to conditional
+  // Initialize a default condition row when switching to conditional
   useEffect(() => {
     if (scope === "conditional" && !condition) {
-      setCondition({ kind: "group", op: "AND", children: [
-        { kind: "cmp", attribute: "", operator: "eq", value: "" }
-      ] });
+      setCondition({ first: { kind: "cmp", attribute: "", operator: "eq", value: "" }, rest: [] });
     }
     if (scope !== "conditional" && condition) {
       // Keep it around but it's ignored unless conditional; no action
@@ -59,7 +55,7 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
   }, [scope, condition]);
 
   const isValidValue = (mode === "literal" && (literalType !== undefined)) || (mode === "substring" && sourceAttr.trim().length > 0);
-  const isValidCondition = scope !== "conditional" || (condition !== null && validateCondition(condition));
+  const isValidCondition = scope !== "conditional" || (condition !== null && validateChain(condition));
   const isValid = key.trim().length > 0 && isValidValue && isValidCondition;
 
   function handleApply() {
@@ -81,7 +77,7 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
       <PopoverBody className="max-h-[300px] space-y-4">
         <section className="space-y-4">
           <section>
-            <Label className="text-xs font-medium" htmlFor="scope">Target scope</Label>
+            <Label className="text-xs font-medium" htmlFor="scope">Target level</Label>
             <section className="mt-1 w-full">
               <Select value={scope} onValueChange={(v) => setScope(v as ScopeValue)}>
                 <SelectTrigger id="scope" className="w-full">
@@ -99,7 +95,7 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
           <section>
             <Label className="text-xs font-medium">Conditions</Label>
             <section className="mt-2 space-y-3">
-              {renderGroupEditor(condition, [], (updated) => setCondition(updated), suggestions)}
+              {renderChainEditor(condition, (updated) => setCondition(updated))}
             </section>
             <p className="text-[11px] text-muted-foreground mt-1">Only items matching the expression will receive the attribute.</p>
           </section>
@@ -215,115 +211,39 @@ function buildSummary(cfg: Record<string, unknown>) {
   if (mode === "fromAttr") {
     return `Set ${key} from attr ${String(cfg.sourceAttr || "")} on ${scopeLabel}`;
   }
-  const cond = cfg.condition ? ` where ${summarizeCondition(cfg.condition as ConditionNode)}` : "";
+  const cond = cfg.condition ? ` where ${summarizeChain(cfg.condition as ConditionChain)}` : "";
   return `Set ${key} from substring of ${String(cfg.sourceAttr || "")} on ${scopeLabel}${cond}`;
 }
 
 
 
-// ---- Condition builder helpers ----
-function validateCondition(node: ConditionNode): boolean {
-  if (node.kind === "cmp") {
-    if (node.operator === "exists") return node.attribute.trim().length > 0;
-    return node.attribute.trim().length > 0 && node.value !== undefined && String(node.value).length > 0;
-  }
-  // group
-  return node.children.length > 0 && node.children.every(validateCondition);
+// ---- Flat condition chain helpers ----
+function validateCondition(cmp: ConditionComparison): boolean {
+  if (cmp.operator === "exists") return cmp.attribute.trim().length > 0;
+  return cmp.attribute.trim().length > 0 && cmp.value !== undefined && String(cmp.value).length > 0;
 }
 
-function summarizeCondition(node: ConditionNode): string {
-  if (node.kind === "cmp") {
-    const op = node.operator === "eq" ? "=" : node.operator === "neq" ? "≠" : node.operator;
-    if (node.operator === "exists") return `${node.attribute} exists`;
-    return `${node.attribute} ${op} ${String(node.value ?? "")}`;
-  }
-  const inner = node.children.map(summarizeCondition).join(` ${node.op} `);
-  const text = node.not ? `NOT(${inner})` : inner;
-  return node.children.length > 1 ? `(${text})` : text;
+function summarizeCmp(cmp: ConditionComparison): string {
+  const op = cmp.operator === "eq" ? "=" : cmp.operator === "neq" ? "≠" : cmp.operator;
+  if (cmp.operator === "exists") return `${cmp.attribute} exists`;
+  return `${cmp.attribute} ${op} ${String(cmp.value ?? "")}`;
 }
 
-function renderGroupEditor(group: ConditionGroup, path: number[], onChange: (g: ConditionGroup) => void, suggestions: string[]): React.ReactNode {
-  return (
-    <section className="space-y-3 border rounded p-3">
-      <section className="space-y-3">
-        <section className="space-y-2">
-          <section className="flex items-center gap-2">
-            <Label className="text-xs whitespace-nowrap">Group operator</Label>
-            <Select value={group.op} onValueChange={(v) => onChange({ ...group, op: v as ConditionGroup["op"] })}>
-              <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="AND">AND</SelectItem>
-                <SelectItem value="OR">OR</SelectItem>
-              </SelectContent>
-            </Select>
-          </section>
-          <section className="flex items-center gap-2">
-            <Label className="text-xs whitespace-nowrap">NOT</Label>
-            <RadioGroup value={group.not ? "true" : "false"} onValueChange={(v) => onChange({ ...group, not: v === "true" })} className="flex items-center gap-2">
-              <section className="flex items-center gap-1">
-                <RadioGroupItem id={`not-${path.join('-')}-no`} value="false" />
-                <Label htmlFor={`not-${path.join('-')}-no`} className="text-xs">No</Label>
-              </section>
-              <section className="flex items-center gap-1">
-                <RadioGroupItem id={`not-${path.join('-')}-yes`} value="true" />
-                <Label htmlFor={`not-${path.join('-')}-yes`} className="text-xs">Yes</Label>
-              </section>
-            </RadioGroup>
-          </section>
-        </section>
-        <section className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...group, children: [...group.children, emptyComparison()] })} className="flex-1">
-            Add condition
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...group, children: [...group.children, emptyGroup()] })} className="flex-1">
-            Add group
-          </Button>
-        </section>
-      </section>
-      <section className="space-y-2">
-        {group.children.map((child, idx) => (
-          <section key={idx} className="space-y-2">
-            <section className="flex-1">
-              {child.kind === "cmp" ? (
-                renderComparison(child, (next) => {
-                  const children = group.children.slice();
-                  children[idx] = next;
-                  onChange({ ...group, children });
-                }, suggestions)
-              ) : (
-                renderGroupEditor(child, [...path, idx], (nextGroup) => {
-                  const children = group.children.slice();
-                  children[idx] = nextGroup;
-                  onChange({ ...group, children });
-                }, suggestions)
-              )}
-            </section>
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => {
-                const children = group.children.slice();
-                children.splice(idx, 1);
-                onChange({ ...group, children });
-              }}
-              className="self-start"
-            >
-              Remove
-            </Button>
-          </section>
-        ))}
-      </section>
-    </section>
-  );
+function summarizeChain(chain: ConditionChain): string {
+  const parts = [summarizeCmp(chain.first), ...chain.rest.map((c) => `${c.op} ${summarizeCmp(c.expr)}`)];
+  return parts.join(" ");
 }
 
-function renderComparison(cmp: ConditionComparison, onChange: (c: ConditionComparison) => void, suggestions: string[]): React.ReactNode {
+function validateChain(chain: ConditionChain): boolean {
+  if (!validateCondition(chain.first)) return false;
+  return chain.rest.every((c) => validateCondition(c.expr));
+}
+
+function renderComparison(cmp: ConditionComparison, onChange: (c: ConditionComparison) => void): React.ReactNode {
   return (
     <section className="space-y-2 w-full">
       <Input 
-        list="attr-suggestions" 
-        placeholder="Attribute path" 
+        placeholder="Where (e.g. name, http.method, service.name)" 
         value={cmp.attribute} 
         onChange={(e) => onChange({ ...cmp, attribute: e.target.value })} 
         className="w-full" 
@@ -349,40 +269,61 @@ function renderComparison(cmp: ConditionComparison, onChange: (c: ConditionCompa
           />
         )}
       </section>
-      <datalist id="attr-suggestions">
-        {suggestions.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
     </section>
   );
-}
-
-function emptyGroup(): ConditionGroup {
-  return { kind: "group", op: "AND", children: [emptyComparison()] };
 }
 
 function emptyComparison(): ConditionComparison {
   return { kind: "cmp", attribute: "", operator: "eq", value: "" };
 }
 
-function buildAttributeSuggestions(parsed: unknown, signal: Props["signal"], cap: number): string[] {
-  const set = new Set<string>();
-  function walk(obj: unknown, path: string[]) {
-    if (set.size >= cap) return;
-    if (obj !== null && typeof obj === "object") {
-      if (Array.isArray(obj)) {
-        obj.forEach((v, i) => walk(v, path.concat(String(i))));
-      } else {
-        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-          const nextPath = path.concat(k);
-          // offer dotted path
-          set.add(nextPath.join("."));
-          walk(v, nextPath);
-        }
-      }
-    }
-  }
-  walk(parsed, []);
-  return Array.from(set).slice(0, cap);
+function renderChainEditor(chain: ConditionChain, onChange: (c: ConditionChain) => void): React.ReactNode {
+  return (
+    <section className="space-y-3">
+      {renderComparison(chain.first, (next) => onChange({ ...chain, first: next }))}
+      {chain.rest.map((clause, idx) => (
+        <section key={idx} className="space-y-2">
+          <section className="flex items-center gap-3">
+            <Separator className="flex-1" />
+            <Select value={clause.op} onValueChange={(v) => {
+              const rest = chain.rest.slice();
+              rest[idx] = { ...clause, op: v as ConditionChainClause["op"] };
+              onChange({ ...chain, rest });
+            }}>
+              <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AND">AND</SelectItem>
+                <SelectItem value="OR">OR</SelectItem>
+              </SelectContent>
+            </Select>
+            <Separator className="flex-1" />
+          </section>
+          {renderComparison(clause.expr, (next) => {
+            const rest = chain.rest.slice();
+            rest[idx] = { ...clause, expr: next };
+            onChange({ ...chain, rest });
+          })}
+          <section className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => {
+              const rest = chain.rest.slice();
+              rest.splice(idx, 1);
+              onChange({ ...chain, rest });
+            }}>Remove</Button>
+            {idx === chain.rest.length - 1 && (
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                const rest = chain.rest.slice();
+                rest.splice(idx + 1, 0, { op: "AND", expr: emptyComparison() });
+                onChange({ ...chain, rest });
+              }}>Add condition</Button>
+            )}
+          </section>
+        </section>
+      ))}
+      {chain.rest.length === 0 && (
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...chain, rest: [{ op: "AND", expr: emptyComparison() }] })}>Add condition</Button>
+      )}
+    </section>
+  );
 }
+
+// Suggestions removed for MVP simplicity
