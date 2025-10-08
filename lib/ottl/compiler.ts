@@ -1,4 +1,4 @@
-import type { Block, JSONValue, SignalType, ConditionChain, ConditionOperator } from "./types";
+import type { Block, JSONValue, ConditionChain, ConditionOperator } from "./types";
 
 type Buckets = {
   trace: string[];
@@ -14,6 +14,9 @@ export function compileBlocksToOTTL(blocks: Block[]): string {
     switch (b.type) {
       case "addAttribute":
         compileAddAttribute(b, buckets);
+        break;
+      case "removeAttribute":
+        compileRemoveAttribute(b, buckets);
         break;
       default:
         // unsupported in MVP
@@ -75,6 +78,44 @@ function compileAddAttribute(block: Block, buckets: Buckets) {
   const val = compileValue(mode, literalType, literalValue, sourceAttr, substringStart, substringEnd, false);
   const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
   buckets.trace.push(`context: span\n      statements:\n        - set(attributes["${key}"], ${val})${rootClause}`);
+}
+
+function compileRemoveAttribute(block: Block, buckets: Buckets) {
+  const cfg = block.config as Record<string, unknown>;
+  const scope = String(cfg.scope ?? "allSpans");
+  type RemoveCfg = { keys?: string[]; condition?: ConditionChain | null };
+  const rc = cfg as RemoveCfg;
+  const keys: string[] = Array.isArray(rc.keys) ? rc.keys as string[] : [];
+  const chain = cfg["condition"] as ConditionChain | null | undefined;
+  const where = chain ? ` where ${compileWhere(chain)}` : "";
+
+  if (scope === "resource") {
+    // Emit resource context under trace bucket (mirrors addAttribute)
+    if (keys.length === 0) return;
+    const lines = keys.map((k) => `- delete_key(resource.attributes, ${JSON.stringify(k)})`).join("\n        ");
+    buckets.trace.push(`context: resource\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allDatapoints") {
+    if (keys.length === 0) return;
+    const lines = keys.map((k) => `- delete_key(attributes, ${JSON.stringify(k)})`).join("\n        ");
+    buckets.metric.push(`context: datapoint\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  if (scope === "allLogs") {
+    if (keys.length === 0) return;
+    const lines = keys.map((k) => `- delete_key(attributes, ${JSON.stringify(k)})${where}`).join("\n        ");
+    buckets.log.push(`context: log\n      statements:\n        ${lines}`);
+    return;
+  }
+
+  // spans (allSpans | rootSpans | conditional)
+  if (keys.length === 0) return;
+  const rootClause = scope === "rootSpans" ? appendWhere(where, "IsRootSpan()") : where;
+  const lines = keys.map((k) => `- delete_key(attributes, ${JSON.stringify(k)})${rootClause}`).join("\n        ");
+  buckets.trace.push(`context: span\n      statements:\n        ${lines}`);
 }
 
 function compileValue(
