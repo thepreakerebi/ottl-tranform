@@ -26,8 +26,14 @@ export default function RightPanel() {
   const current = snapshots[stepIndex];
   const beforeStr = useMemo(() => pretty(current?.before), [current]);
   const afterStr = useMemo(() => pretty(current?.after), [current]);
-  const afterHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
-  const highlightList = useMemo(() => clusterHighlights(afterHighlights), [afterHighlights]);
+  const diffHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
+  const unionForClusters = useMemo(() => {
+    const u = new Set<number>();
+    diffHighlights.added.forEach((i) => u.add(i));
+    diffHighlights.removed.forEach((i) => u.add(i));
+    return u;
+  }, [diffHighlights]);
+  const highlightList = useMemo(() => clusterHighlights(unionForClusters), [unionForClusters]);
   const [jumpIndex, setJumpIndex] = useState(0);
   // firstChanged retained conceptually; header button logic uses highlightList directly
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -127,7 +133,7 @@ export default function RightPanel() {
             {/* Scrollable JSON content */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
               <div className="p-4">
-                {renderHighlighted(afterStr, afterHighlights)}
+                {renderHighlighted(afterStr, diffHighlights)}
               </div>
             </div>
           </div>
@@ -158,23 +164,35 @@ function pretty(v: unknown) {
 }
 
 function computeHighlights(beforeText: string, afterText: string) {
-  const beforeSet = new Set(beforeText.split("\n"));
-  const highlights = new Set<number>();
-  const lines = afterText.split("\n");
-  lines.forEach((line, idx) => {
-    if (!beforeSet.has(line)) {
-      highlights.add(idx);
-    }
+  const beforeLines = beforeText.split("\n");
+  const afterLines = afterText.split("\n");
+  const beforeSet = new Set(beforeLines);
+  const added = new Set<number>();
+  const removed = new Set<number>();
+  // Added lines = those present in after but not in before
+  afterLines.forEach((line, idx) => {
+    if (!beforeSet.has(line)) added.add(idx);
   });
-  return highlights;
+  // Removed lines = those present in before but not in after; we approximate positions by best-effort mapping index
+  const afterSet = new Set(afterLines);
+  beforeLines.forEach((line, idx) => {
+    if (!afterSet.has(line)) removed.add(Math.min(idx, afterLines.length - 1));
+  });
+  return { added, removed };
 }
 
-function renderHighlighted(text: string, highlights: Set<number>) {
+function renderHighlighted(text: string, highlights: { added: Set<number>; removed: Set<number> }) {
   const lines = text.split("\n");
   return (
     <section>
       {lines.map((ln, i) => (
-        <div key={i} data-line={i} className={`text-xs leading-5 font-mono whitespace-pre ${highlights.has(i) ? "bg-green-400" : ""}`}>{ln || "\u00A0"}</div>
+        <div
+          key={i}
+          data-line={i}
+          className={`text-xs leading-5 font-mono whitespace-pre ${highlights.added.has(i) ? "bg-green-400" : highlights.removed.has(i) ? "bg-red-300" : ""}`}
+        >
+          {ln || "\u00A0"}
+        </div>
       ))}
     </section>
   );
