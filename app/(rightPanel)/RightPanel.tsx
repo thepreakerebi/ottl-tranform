@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -28,6 +28,13 @@ export default function RightPanel() {
   const firstChanged = useMemo(() => (afterHighlights.size ? Math.min(...Array.from(afterHighlights)) : null), [afterHighlights]);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // When new snapshots arrive (e.g., after Run), default to the last step.
+  useEffect(() => {
+    if (snapshots.length === 0) return;
+    const last = snapshots.length - 1;
+    if (stepIndex !== last) setStepIndex(last);
+  }, [snapshots.length, stepIndex, setStepIndex]);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
