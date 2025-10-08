@@ -46,6 +46,8 @@ export function runPipeline(telemetry: JSONValue, blocks: Block[]): RunResult {
       // metrics
       const t3 = applyRemoveAttributeMetrics(t2, b.config as unknown as RemoveAttrConfig);
       current = t3;
+    } else if (b.type === "maskAttribute") {
+      current = applyMaskAttribute(current, b.config as unknown as MaskAttrConfig);
     }
     snapshots.push({ stepIndex: idx, before, after: clone(current) });
   });
@@ -92,6 +94,18 @@ type MetricsDoc = { resourceMetrics?: ResourceMetrics[] };
 type RemoveAttrConfig = {
   scope: "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
   keys: string[];
+  condition?: {
+    first: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue };
+    rest: Array<{ op: "AND" | "OR"; expr: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue } }>;
+  } | null;
+};
+
+// Mask attribute config
+type MaskAttrConfig = {
+  scope: "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
+  keys: string[];
+  substringStart: string;
+  substringEnd?: string;
   condition?: {
     first: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue };
     rest: Array<{ op: "AND" | "OR"; expr: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue } }>;
@@ -359,6 +373,17 @@ function removeAttrs(target: AttributeContainer | undefined, keys: string[]) {
   target.attributes = list.filter((a) => !keys.includes(a.key));
 }
 
+function maskValue(raw: JSONValue, start: number, end?: number): string {
+  const s = String(raw ?? "");
+  const st = Number.isFinite(start) ? Math.max(0, start) : 0;
+  const ed = typeof end === "number" && Number.isFinite(end) ? Math.max(st, end) : undefined;
+  const left = s.slice(0, st);
+  const middle = typeof ed === "number" ? s.slice(st, ed) : s.slice(st);
+  const right = typeof ed === "number" ? s.slice(ed) : "";
+  const masked = middle.replace(/./g, "*");
+  return `${left}${masked}${right}`;
+}
+
 function resolveValue(cfg: AddAttrConfig, item: AttributeContainer, resourceAttrs?: Record<string, JSONValue>) {
   if (cfg.mode === "literal") return coerceLiteral(cfg.literalType, cfg.literalValue ?? "");
   // substring
@@ -375,6 +400,91 @@ function resolveValue(cfg: AddAttrConfig, item: AttributeContainer, resourceAttr
   const start = parseInt(cfg.substringStart ?? "0", 10) || 0;
   const end = cfg.substringEnd ? parseInt(cfg.substringEnd, 10) : undefined;
   return typeof end === "number" ? src.substring(start, end) : src.substring(start);
+}
+
+function applyMaskAttribute(telemetry: JSONValue, cfg: MaskAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  // traces
+  if (isTracesDoc(telemetry)) {
+    const t: TracesDoc = clone(telemetry);
+    for (const rs of t.resourceSpans ?? []) {
+      const resourceAttrs = arrayToMap(rs.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rs.scopeSpans ?? []).some((ss) => (ss.spans ?? []).some((sp) => evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs)));
+        if (hasMatch) maskAttrs(rs.resource, cfg);
+        continue;
+      }
+      for (const ss of rs.scopeSpans ?? []) {
+        for (const sp of ss.spans ?? []) {
+          const within = cfg.scope === "allSpans" || cfg.scope === "rootSpans" || cfg.scope === "conditional";
+          if (!within) continue;
+          if (!cfg.condition || evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs)) {
+            maskAttrs(sp, cfg);
+          }
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+
+  // logs
+  const asLogs = telemetry as unknown as LogsDoc;
+  if (Array.isArray(asLogs.resourceLogs)) {
+    const t: LogsDoc = clone(asLogs);
+    for (const rl of t.resourceLogs ?? []) {
+      const resourceAttrs = arrayToMap(rl.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rl.scopeLogs ?? []).some((sl) => (sl.logRecords ?? []).some((lr) => evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)));
+        if (hasMatch) maskAttrs(rl.resource, cfg);
+        continue;
+      }
+      for (const sl of rl.scopeLogs ?? []) {
+        for (const lr of sl.logRecords ?? []) {
+          if (!cfg.condition || evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)) maskAttrs(lr, cfg);
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+
+  // metrics
+  const asMetrics = telemetry as unknown as MetricsDoc;
+  if (Array.isArray(asMetrics.resourceMetrics)) {
+    const t: MetricsDoc = clone(asMetrics);
+    for (const rm of t.resourceMetrics ?? []) {
+      const resourceAttrs = arrayToMap(rm.resource?.attributes);
+      if (cfg.scope === "resource") {
+        const hasMatch = !cfg.condition || (rm.scopeMetrics ?? []).some((sm) => (sm.metrics ?? []).some((m) => datapointsOf(m).some((dp) => evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs))));
+        if (hasMatch) maskAttrs(rm.resource, cfg);
+        continue;
+      }
+      for (const sm of rm.scopeMetrics ?? []) {
+        for (const m of sm.metrics ?? []) {
+          for (const dp of datapointsOf(m)) {
+            if (!cfg.condition || evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs)) maskAttrs(dp, cfg);
+          }
+        }
+      }
+    }
+    return t as unknown as JSONValue;
+  }
+
+  return telemetry;
+}
+
+function maskAttrs(target: AttributeContainer | undefined, cfg: MaskAttrConfig) {
+  if (!target || !Array.isArray(target.attributes) || cfg.keys.length === 0) return;
+  const list: AttributeKV[] = target.attributes;
+  const start = parseInt(cfg.substringStart ?? "0", 10) || 0;
+  const end = cfg.substringEnd ? parseInt(cfg.substringEnd, 10) : undefined;
+  for (const kv of list) {
+    if (!cfg.keys.includes(kv.key)) continue;
+    const v = kv.value;
+    if (!v || typeof v !== "object") continue;
+    const k = Object.keys(v)[0];
+    const masked = maskValue((v as Record<string, unknown>)[k] as JSONValue, start, end);
+    kv.value = { stringValue: String(masked) };
+  }
 }
 
 function coerceLiteral(type: AddAttrConfig["literalType"], raw: string): JSONValue {
