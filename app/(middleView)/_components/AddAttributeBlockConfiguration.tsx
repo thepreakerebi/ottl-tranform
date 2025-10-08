@@ -166,7 +166,7 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
       <PopoverSeparator />
       <PopoverFooter className="flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="button" disabled={!isValid} onClick={handleApply}>Apply</Button>
+        <Button type="button" disabled={!isValid} onClick={handleApply}>Save</Button>
       </PopoverFooter>
     </section>
   );
