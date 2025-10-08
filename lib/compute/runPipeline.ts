@@ -35,7 +35,9 @@ export function runPipeline(telemetry: JSONValue, blocks: Block[]): RunResult {
       const t1 = applyAddAttribute(current, b.config as unknown as AddAttrConfig);
       // logs
       const t2 = applyAddAttributeLogs(t1, b.config as unknown as AddAttrConfig);
-      current = t2;
+      // metrics
+      const t3 = applyAddAttributeMetrics(t2, b.config as unknown as AddAttrConfig);
+      current = t3;
     }
     snapshots.push({ stepIndex: idx, before, after: clone(current) });
   });
@@ -63,6 +65,20 @@ type LogRecord = AttributeContainer & {
 type ScopeLogs = { scope?: Scope; logRecords?: LogRecord[] };
 type ResourceLogs = { resource?: Resource; scopeLogs?: ScopeLogs[] };
 type LogsDoc = { resourceLogs?: ResourceLogs[] };
+
+// Metrics model (minimal)
+type DataPoint = AttributeContainer & { timeUnixNano?: string; value?: number | string };
+type Metric = {
+  name?: string;
+  description?: string;
+  unit?: string;
+  sum?: { dataPoints?: DataPoint[] };
+  gauge?: { dataPoints?: DataPoint[] };
+  histogram?: { dataPoints?: DataPoint[] };
+};
+type ScopeMetrics = { scope?: Scope; metrics?: Metric[] };
+type ResourceMetrics = { resource?: Resource; scopeMetrics?: ScopeMetrics[] };
+type MetricsDoc = { resourceMetrics?: ResourceMetrics[] };
 
 function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
   if (!isObj(telemetry)) return telemetry;
@@ -121,6 +137,112 @@ function applyAddAttributeLogs(telemetry: JSONValue, cfg: AddAttrConfig): JSONVa
     }
   }
   return t as unknown as JSONValue;
+}
+
+function applyAddAttributeMetrics(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  const doc = telemetry as unknown as MetricsDoc;
+  if (!Array.isArray(doc.resourceMetrics)) return telemetry;
+  const t: MetricsDoc = clone(doc);
+  for (const rm of t.resourceMetrics ?? []) {
+    const resourceAttrs = arrayToMap(rm.resource?.attributes);
+    if (cfg.scope === "resource") {
+      const hasMatch = !cfg.condition || (rm.scopeMetrics ?? []).some((sm) =>
+        (sm.metrics ?? []).some((m) => datapointsOf(m).some((dp) => evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs)))
+      );
+      if (hasMatch) upsertAttr(rm.resource, cfg, resourceAttrs);
+      continue;
+    }
+    for (const sm of rm.scopeMetrics ?? []) {
+      for (const m of sm.metrics ?? []) {
+        for (const dp of datapointsOf(m)) {
+          const ok = !cfg.condition || evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs);
+          if (!ok) continue;
+          upsertAttr(dp, cfg, resourceAttrs);
+        }
+      }
+    }
+  }
+  return t as unknown as JSONValue;
+}
+
+function datapointsOf(m: Metric): DataPoint[] {
+  if (m.sum?.dataPoints) return m.sum.dataPoints;
+  if (m.gauge?.dataPoints) return m.gauge.dataPoints;
+  if (m.histogram?.dataPoints) return m.histogram.dataPoints;
+  return [];
+}
+
+function evaluateChainMetrics(chain: AddAttrConfig["condition"], dp: DataPoint, metric: Metric, scope: Scope | undefined, resourceAttrs?: Record<string, JSONValue>): boolean {
+  if (!chain) return true;
+  const first = evaluateCmpMetric(chain.first, dp, metric, scope, resourceAttrs);
+  return chain.rest.reduce((acc, clause) => {
+    const rhs = evaluateCmpMetric(clause.expr, dp, metric, scope, resourceAttrs);
+    return clause.op === "AND" ? (acc && rhs) : (acc || rhs);
+  }, first);
+}
+
+function evaluateCmpMetric(cmp: NonNullable<AddAttrConfig["condition"]>["first"], dp: DataPoint, metric: Metric, scope: Scope | undefined, resourceAttrs?: Record<string, JSONValue>): boolean {
+  const left = resolveMetric(dp, metric, scope, cmp.attribute, resourceAttrs);
+  switch (cmp.operator) {
+    case "exists":
+      return left !== undefined && left !== null && String(left).length > 0;
+    case "eq":
+      return String(left) === String(cmp.value ?? "");
+    case "neq":
+      return String(left) !== String(cmp.value ?? "");
+    case "contains":
+      return String(left).includes(String(cmp.value ?? ""));
+    case "starts":
+      return String(left).startsWith(String(cmp.value ?? ""));
+    case "regex":
+      try { return new RegExp(String(cmp.value ?? "")).test(String(left)); } catch { return false; }
+  }
+}
+
+function resolveMetric(dp: DataPoint, metric: Metric, scope: Scope | undefined, field: string, resourceAttrs?: Record<string, JSONValue>): JSONValue | undefined {
+  const f = (field || "").trim();
+  if (!f) return undefined;
+  // Metric-level explicit prefix
+  if (f.startsWith("metric.")) {
+    const p = f.slice("metric.".length);
+    const mrec = metric as unknown as Record<string, unknown>;
+    if (p in mrec) return mrec[p] as JSONValue;
+    return undefined;
+  }
+  if (f.startsWith("resource.")) {
+    const p = f.slice("resource.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m && resourceAttrs) return resourceAttrs[m[1]];
+    }
+    return getByPath((dp as unknown as { resource?: Record<string, unknown> })?.resource as Record<string, unknown> | undefined, p);
+  }
+  if (f.startsWith("scope.")) {
+    const p = f.slice("scope.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m) return findAttr(scope?.attributes, m[1]);
+    }
+    return getByPath(scope as unknown as Record<string, unknown> | undefined, p);
+  }
+  if (f.startsWith("datapoint.")) {
+    const p = f.slice("datapoint.".length);
+    if (p.startsWith("attributes[")) {
+      const m = p.match(/^attributes\["([^"]+)"\]$/);
+      if (m) return findAttr(dp.attributes, m[1]);
+    }
+    return getByPath(dp as unknown as Record<string, unknown>, p);
+  }
+  // common aliases
+  if (f === "name") return (metric.name as unknown) as JSONValue;
+  if (f === "description") return (metric.description as unknown) as JSONValue;
+  if (f === "unit") return (metric.unit as unknown) as JSONValue;
+  if (f === "value") return (dp.value as unknown) as JSONValue;
+  const fromAttr = findAttr(dp.attributes, f);
+  if (fromAttr !== undefined) return fromAttr;
+  if (resourceAttrs && f in resourceAttrs) return resourceAttrs[f];
+  return getByPath(dp as unknown as Record<string, unknown>, f);
 }
 
 function upsertAttr(target: AttributeContainer | undefined, cfg: AddAttrConfig, resourceAttrs?: Record<string, JSONValue>) {
