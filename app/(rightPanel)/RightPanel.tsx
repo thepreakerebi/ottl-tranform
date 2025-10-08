@@ -84,8 +84,9 @@ export default function RightPanel() {
   useEffect(() => {
     if (snapshots.length === 0) return;
     const last = snapshots.length - 1;
-    if (stepIndex !== last) setStepIndex(last);
-  }, [snapshots.length, stepIndex, setStepIndex]);
+    setStepIndex(last);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshots.length]);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
