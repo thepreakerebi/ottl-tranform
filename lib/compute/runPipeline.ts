@@ -38,6 +38,14 @@ export function runPipeline(telemetry: JSONValue, blocks: Block[]): RunResult {
       // metrics
       const t3 = applyAddAttributeMetrics(t2, b.config as unknown as AddAttrConfig);
       current = t3;
+    } else if (b.type === "removeAttribute") {
+      // traces
+      const t1 = applyRemoveAttribute(current, b.config as unknown as RemoveAttrConfig);
+      // logs
+      const t2 = applyRemoveAttributeLogs(t1, b.config as unknown as RemoveAttrConfig);
+      // metrics
+      const t3 = applyRemoveAttributeMetrics(t2, b.config as unknown as RemoveAttrConfig);
+      current = t3;
     }
     snapshots.push({ stepIndex: idx, before, after: clone(current) });
   });
@@ -80,6 +88,16 @@ type ScopeMetrics = { scope?: Scope; metrics?: Metric[] };
 type ResourceMetrics = { resource?: Resource; scopeMetrics?: ScopeMetrics[] };
 type MetricsDoc = { resourceMetrics?: ResourceMetrics[] };
 
+// Remove attribute config
+type RemoveAttrConfig = {
+  scope: "resource" | "allSpans" | "rootSpans" | "allLogs" | "allDatapoints" | "conditional";
+  keys: string[];
+  condition?: {
+    first: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue };
+    rest: Array<{ op: "AND" | "OR"; expr: { kind: "cmp"; attribute: string; operator: "eq" | "neq" | "contains" | "starts" | "regex" | "exists"; value?: JSONValue } }>;
+  } | null;
+};
+
 function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
   if (!isObj(telemetry)) return telemetry;
   if (!isTracesDoc(telemetry)) return telemetry;
@@ -114,6 +132,34 @@ function applyAddAttribute(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue 
   return t as unknown as JSONValue;
 }
 
+// Remove for traces
+function applyRemoveAttribute(telemetry: JSONValue, cfg: RemoveAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  if (!isTracesDoc(telemetry)) return telemetry;
+  const t: TracesDoc = clone(telemetry);
+  const resourceSpans = t.resourceSpans ?? [];
+  for (const rs of resourceSpans) {
+    const resourceAttrs = arrayToMap(rs.resource?.attributes);
+    if (cfg.scope === "resource") {
+      const hasMatch = !cfg.condition || (rs.scopeSpans ?? []).some((ss) => (ss.spans ?? []).some((sp) => evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs)));
+      if (hasMatch) removeAttrs(rs.resource, cfg.keys);
+      continue;
+    }
+    for (const ss of rs.scopeSpans ?? []) {
+      for (const sp of ss.spans ?? []) {
+        const isRoot = !(sp as unknown as { parentSpanId?: string }).parentSpanId;
+        const within = cfg.scope === "allSpans" || (cfg.scope === "rootSpans" && isRoot) || cfg.scope === "conditional";
+        if (!within) continue;
+        const condOk = !cfg.condition || evaluateChain(cfg.condition, sp, ss.scope as Scope | undefined, resourceAttrs);
+        if (!condOk) continue;
+        // Heuristic write target from add-attribute: prefer span level for removals
+        removeAttrs(sp, cfg.keys);
+      }
+    }
+  }
+  return t as unknown as JSONValue;
+}
+
 // Apply for logs (resource + log records)
 function applyAddAttributeLogs(telemetry: JSONValue, cfg: AddAttrConfig): JSONValue {
   if (!isObj(telemetry)) return telemetry;
@@ -133,6 +179,29 @@ function applyAddAttributeLogs(telemetry: JSONValue, cfg: AddAttrConfig): JSONVa
         const ok = !cfg.condition || evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs);
         if (!ok) continue;
         upsertAttr(lr, cfg, resourceAttrs);
+      }
+    }
+  }
+  return t as unknown as JSONValue;
+}
+
+function applyRemoveAttributeLogs(telemetry: JSONValue, cfg: RemoveAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  const doc = telemetry as unknown as LogsDoc;
+  if (!Array.isArray(doc.resourceLogs)) return telemetry;
+  const t: LogsDoc = clone(doc);
+  for (const rl of t.resourceLogs ?? []) {
+    const resourceAttrs = arrayToMap(rl.resource?.attributes);
+    if (cfg.scope === "resource") {
+      const hasMatch = !cfg.condition || (rl.scopeLogs ?? []).some((sl) => (sl.logRecords ?? []).some((lr) => evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs)));
+      if (hasMatch) removeAttrs(rl.resource, cfg.keys);
+      continue;
+    }
+    for (const sl of rl.scopeLogs ?? []) {
+      for (const lr of sl.logRecords ?? []) {
+        const ok = !cfg.condition || evaluateChainLogs(cfg.condition, lr, sl.scope, resourceAttrs);
+        if (!ok) continue;
+        removeAttrs(lr, cfg.keys);
       }
     }
   }
@@ -159,6 +228,31 @@ function applyAddAttributeMetrics(telemetry: JSONValue, cfg: AddAttrConfig): JSO
           const ok = !cfg.condition || evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs);
           if (!ok) continue;
           upsertAttr(dp, cfg, resourceAttrs);
+        }
+      }
+    }
+  }
+  return t as unknown as JSONValue;
+}
+
+function applyRemoveAttributeMetrics(telemetry: JSONValue, cfg: RemoveAttrConfig): JSONValue {
+  if (!isObj(telemetry)) return telemetry;
+  const doc = telemetry as unknown as MetricsDoc;
+  if (!Array.isArray(doc.resourceMetrics)) return telemetry;
+  const t: MetricsDoc = clone(doc);
+  for (const rm of t.resourceMetrics ?? []) {
+    const resourceAttrs = arrayToMap(rm.resource?.attributes);
+    if (cfg.scope === "resource") {
+      const hasMatch = !cfg.condition || (rm.scopeMetrics ?? []).some((sm) => (sm.metrics ?? []).some((m) => datapointsOf(m).some((dp) => evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs))));
+      if (hasMatch) removeAttrs(rm.resource, cfg.keys);
+      continue;
+    }
+    for (const sm of rm.scopeMetrics ?? []) {
+      for (const m of sm.metrics ?? []) {
+        for (const dp of datapointsOf(m)) {
+          const ok = !cfg.condition || evaluateChainMetrics(cfg.condition, dp, m, sm.scope, resourceAttrs);
+          if (!ok) continue;
+          removeAttrs(dp, cfg.keys);
         }
       }
     }
@@ -257,6 +351,12 @@ function upsertAttr(target: AttributeContainer | undefined, cfg: AddAttrConfig, 
     list.push(pair);
   }
   target.attributes = list;
+}
+
+function removeAttrs(target: AttributeContainer | undefined, keys: string[]) {
+  if (!target || !Array.isArray(target.attributes) || keys.length === 0) return;
+  const list: AttributeKV[] = target.attributes;
+  target.attributes = list.filter((a) => !keys.includes(a.key));
 }
 
 function resolveValue(cfg: AddAttrConfig, item: AttributeContainer, resourceAttrs?: Record<string, JSONValue>) {
