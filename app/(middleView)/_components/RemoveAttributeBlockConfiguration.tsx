@@ -41,6 +41,13 @@ export default function RemoveAttributeBlockConfiguration({ signal, description:
     }
   }, [scope, condition]);
 
+  // Clear selected keys whenever target level changes to avoid stale selections
+  useEffect(() => {
+    setKeys([]);
+    setQuery("");
+    setComboOpen(false);
+  }, [scope]);
+
   useEffect(() => {
     if (!initialConfig) return;
     const ic = initialConfig as Record<string, unknown>;
