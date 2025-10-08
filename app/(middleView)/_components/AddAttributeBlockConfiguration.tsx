@@ -110,7 +110,7 @@ export default function AddAttributeBlockConfiguration({ signal, description: he
             </section>
           </section>
           <section>
-            <Label className="text-xs font-medium">Value</Label>
+            <Label className="text-xs font-medium">Attribute value</Label>
             <section className="mt-1 space-y-2">
               <RadioGroup value={mode} onValueChange={(v) => setMode(v as ValueMode)} className="flex items-center gap-3 text-sm">
                 <section className="flex items-center gap-2">
