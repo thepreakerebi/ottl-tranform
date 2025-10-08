@@ -4,17 +4,29 @@ import { useUIStore } from "../../lib/stores/uiStore";
 import { Play, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
+import { useTelemetryStore } from "../../lib/stores/telemetryStore";
+import { usePipelineStore } from "../../lib/stores/pipelineStore";
+import { usePreviewStore } from "../../lib/stores/previewStore";
+import { runPipeline } from "../../lib/compute/runPipeline";
 
 export default function BottomBar() {
   const active = useUIStore((s) => s.activeMiddleTab);
   const setActive = useUIStore((s) => s.setActiveMiddleTab);
   const [isRunning, setIsRunning] = useState(false);
+  const telemetry = useTelemetryStore((s) => s.parsed);
+  const blocks = usePipelineStore((s) => s.blocks);
+  const setSnapshots = usePreviewStore((s) => s.setSnapshots);
 
   function handleRun() {
     if (isRunning) return;
+    if (!telemetry || !Array.isArray(blocks) || blocks.length === 0) return;
     setIsRunning(true);
-    // Placeholder async work; replace with real run callback
-    setTimeout(() => setIsRunning(false), 1200);
+    try {
+      const result = runPipeline(telemetry, blocks);
+      setSnapshots(result.snapshots);
+    } finally {
+      setIsRunning(false);
+    }
   }
 
   return (
@@ -48,6 +60,7 @@ export default function BottomBar() {
           type="button"
           onClick={handleRun}
           aria-busy={isRunning}
+          disabled={isRunning || !telemetry || !blocks || blocks.length === 0}
           className="rounded-[6px] px-4 py-2 inline-flex items-center gap-2"
         >
           {isRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
