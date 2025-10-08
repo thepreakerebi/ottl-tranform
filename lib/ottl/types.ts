@@ -63,4 +63,31 @@ export interface TransformResponse {
   info?: string;
 }
 
+// Condition expression tree used by conditional scopes/filters
+export type ConditionOperator =
+  | "eq" // equals
+  | "neq" // not equals
+  | "contains"
+  | "starts"
+  | "regex"
+  | "exists";
+
+export type AttributePath = string; // dot or bracket path, e.g. "service.name" or "resource.attributes['http.method']"
+
+export type ConditionNode = ConditionGroup | ConditionComparison;
+
+export interface ConditionGroup {
+  kind: "group";
+  op: "AND" | "OR";
+  not?: boolean;
+  children: ConditionNode[];
+}
+
+export interface ConditionComparison {
+  kind: "cmp";
+  attribute: AttributePath;
+  operator: ConditionOperator;
+  // When operator requires a value (not exists), this is provided
+  value?: JSONValue;
+}
 
