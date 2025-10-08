@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { typeToDescription } from "../../../lib/ottl/blockCatalog";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import AddAttributeBlockConfiguration from "./AddAttributeBlockConfiguration";
+import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 import { useState } from "react";
 
 type Props = {
@@ -22,7 +23,7 @@ type Props = {
   onDelete?: () => void;
 };
 
-export default function CanvasBlock({ id, index, type, signal, icon, configuredSummary, onConfigure, onApplyConfig, onDuplicate, onDelete }: Props) {
+export default function CanvasBlock({ id, index, type, icon, configuredSummary, onConfigure, onApplyConfig, onDuplicate, onDelete }: Props) {
   const title = humanizeType(type);
   const description = configuredSummary || typeToDescription[type] || "";
   const sortable = useSortable({ id });
@@ -31,6 +32,7 @@ export default function CanvasBlock({ id, index, type, signal, icon, configuredS
     transition: sortable.transition,
   } as React.CSSProperties;
   const [open, setOpen] = useState(false);
+  const detectedSignal = useTelemetryStore((s) => s.signal);
 
   return (
     <article aria-label={title} ref={sortable.setNodeRef} style={style} className="rounded-lg bg-secondary text-secondary-foreground p-4">
@@ -86,7 +88,7 @@ export default function CanvasBlock({ id, index, type, signal, icon, configuredS
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[300px]">
                   <AddAttributeBlockConfiguration
-                    signal={normalizeSignal(signal)}
+                    signal={normalizeSignal(detectedSignal)}
                     description={typeToDescription[type] || ""}
                     onApply={(summary, config) => {
                       onApplyConfig?.(summary, config);
