@@ -31,27 +31,29 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
             <th scope="col" className="text-left font-semibold py-1 pr-2">Key</th>
             <th scope="col" className="text-left font-semibold py-1">Value</th>
             {actions && (actions.onRemove || actions.onMask) ? (
-              <th scope="col" className="text-right font-semibold py-1 pr-1">Actions</th>
+              <th scope="col" className="text-center font-semibold py-1 pr-1">Actions</th>
             ) : null}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} className="border-t align-top">
-              <th scope="row" className="py-1 pr-2 text-left text-foreground/90 font-medium whitespace-nowrap align-top">{r.key}</th>
-              <td className="py-1 text-left text-foreground/80 break-words align-top">{r.value}</td>
+              <th scope="row" className="py-1 pr-2 text-left text-foreground/90 font-medium whitespace-nowrap align-middle">{r.key}</th>
+              <td className="py-1 text-left text-foreground/80 break-words align-middle">{r.value}</td>
               {actions && (actions.onRemove || actions.onMask) ? (
-                <td className="py-1 text-right whitespace-nowrap">
-                  {actions.onRemove && (
-                    <Button type="button" variant="ghost" size="sm" aria-label={`Remove ${r.key}`} onClick={() => actions.onRemove?.(r.key)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  )}
-                  {actions.onMask && (
-                    <Button type="button" variant="ghost" size="sm" aria-label={`Mask ${r.key}`} onClick={() => actions.onMask?.(r.key)}>
-                      <ScanText className="size-4" />
-                    </Button>
-                  )}
+                <td className="py-1 text-center whitespace-nowrap align-middle">
+                  <span className="inline-flex items-center justify-center gap-1">
+                    {actions.onRemove && (
+                      <Button type="button" variant="ghost" size="sm" aria-label={`Remove ${r.key}`} onClick={() => actions.onRemove?.(r.key)}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                    {actions.onMask && (
+                      <Button type="button" variant="ghost" size="sm" aria-label={`Mask ${r.key}`} onClick={() => actions.onMask?.(r.key)}>
+                        <ScanText className="size-4" />
+                      </Button>
+                    )}
+                  </span>
                 </td>
               ) : null}
             </tr>
