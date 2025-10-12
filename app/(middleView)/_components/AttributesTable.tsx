@@ -2,7 +2,7 @@
 
 import { Label } from "../../../components/ui/label";
 import { Button } from "../../../components/ui/button";
-import { Trash2, ScanText } from "lucide-react";
+import ActionMenu from "./ActionMenu";
 
 type AttributeKV = { key: string; value: Record<string, unknown> };
 
@@ -46,18 +46,11 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
               <td className="py-1 text-left text-foreground/80 break-words align-middle">{r.value}</td>
               {actions && (actions.onRemove || actions.onMask) ? (
                 <td className="py-1 text-center whitespace-nowrap align-middle">
-                  <span className="inline-flex items-center justify-center gap-1">
-                    {actions.onRemove && (
-                      <Button type="button" variant="ghost" size="sm" aria-label={`Remove ${r.key}`} onClick={() => actions.onRemove?.(r.key)}>
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
-                    {actions.onMask && (
-                      <Button type="button" variant="ghost" size="sm" aria-label={`Mask ${r.key}`} onClick={() => actions.onMask?.(r.key)}>
-                        <ScanText className="size-4" />
-                      </Button>
-                    )}
-                  </span>
+                  <ActionMenu
+                    onEdit={() => { /* future: open edit key/value flow */ }}
+                    onMask={actions.onMask ? () => actions.onMask?.(r.key) : undefined}
+                    onRemove={actions.onRemove ? () => actions.onRemove?.(r.key) : undefined}
+                  />
                 </td>
               ) : null}
             </tr>
