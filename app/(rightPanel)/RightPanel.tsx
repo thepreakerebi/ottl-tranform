@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../
 import { toast } from "sonner";
 
 export default function RightPanel() {
-  const parsed = useTelemetryStore((s) => s.parsed);
+  const rawText = useTelemetryStore((s) => s.rawText);
   const snapshots = usePreviewStore((s) => s.snapshots);
   const stepIndex = usePreviewStore((s) => s.stepIndex);
   const setStepIndex = usePreviewStore((s) => s.setStepIndex);
@@ -21,15 +21,26 @@ export default function RightPanel() {
   const blocks = usePipelineStore((s) => s.blocks);
 
   const options = useMemo(() => {
-    return snapshots.map((s) => {
+    const list = snapshots.map((s, i) => {
       const label = blockLabel(blocks[s.stepIndex]?.type ?? "", s.stepIndex);
-      return { value: String(s.stepIndex), label };
+      return { value: String(s.stepIndex), label, idx: i };
     });
+    const reversed = list.reverse(); // latest first
+    // Fix the idx values after reverse to point to correct snapshot indices
+    return reversed.map((item, newIndex) => ({
+      ...item,
+      idx: snapshots.length - 1 - newIndex
+    }));
   }, [snapshots, blocks]);
 
   const current = snapshots[stepIndex];
   const afterStr = useMemo(() => pretty(current?.after), [current]);
-  const diffHighlights = useMemo(() => computeHighlights(pretty(current?.before), afterStr), [current, afterStr]);
+  // Baseline for highlighting = this step's before (to show only this step's changes)
+  const baselineStr = useMemo(() => {
+    if (!current) return "";
+    return pretty(current.before);
+  }, [current]);
+  const diffHighlights = useMemo(() => computeHighlights(baselineStr, afterStr), [baselineStr, afterStr]);
   const unionForClusters = useMemo(() => {
     const u = new Set<number>();
     diffHighlights.added.forEach((i) => u.add(i));
@@ -37,7 +48,7 @@ export default function RightPanel() {
     return u;
   }, [diffHighlights]);
   const highlightList = useMemo(() => clusterHighlights(unionForClusters), [unionForClusters]);
-  const changeCount = useMemo(() => changeCountFromHighlights(pretty(current?.before), afterStr, diffHighlights, highlightList.length), [current, afterStr, diffHighlights, highlightList.length]);
+  // const changeCount = useMemo(() => changeCountFromHighlights(pretty(current?.before), afterStr, diffHighlights, highlightList.length), [current, afterStr, diffHighlights, highlightList.length]);
   const [jumpIndex, setJumpIndex] = useState(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -69,11 +80,11 @@ export default function RightPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshots.length]);
 
-  // When telemetry changes in Left Panel, reset the preview (fresh context)
+  // When Left Panel raw text changes, reset the preview (fresh context)
   useEffect(() => {
     clearPreview();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsed]);
+  }, [rawText]);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
@@ -93,19 +104,20 @@ export default function RightPanel() {
             {/* History list */}
             <div className="px-4 py-2 border-b text-xs flex-shrink-0 bg-muted/30">
               <div className="overflow-x-auto whitespace-nowrap">
-                {options.map((o, i) => (
+                {options.map((o) => (
                   <button
                     key={o.value}
                     type="button"
-                    className={`mr-2 px-2 py-1 rounded border ${i === stepIndex ? "bg-secondary" : "hover:bg-accent"}`}
+                    className={`mr-2 px-2 py-1 rounded border ${o.idx === stepIndex ? "bg-primary text-primary-foreground hover:bg-primary/90" : "hover:bg-accent"}`}
                     onClick={() => {
-                      setStepIndex(i);
+                      setStepIndex(o.idx);
                       // Auto-scroll to first change after step change
                       setTimeout(() => {
-                        const newCurrent = snapshots[i];
+                        const newCurrent = snapshots[o.idx];
                         if (newCurrent) {
                           const newAfterStr = pretty(newCurrent.after);
-                          const newDiffHighlights = computeHighlights(pretty(newCurrent.before), newAfterStr);
+                          const newBaselineStr = pretty(newCurrent.before);
+                          const newDiffHighlights = computeHighlights(newBaselineStr, newAfterStr);
                           const newUnion = new Set<number>();
                           newDiffHighlights.added.forEach((idx) => newUnion.add(idx));
                           newDiffHighlights.removed.forEach((idx) => newUnion.add(idx));
@@ -130,10 +142,10 @@ export default function RightPanel() {
               <section className="flex items-center gap-1">
                 {snapshots.length > 0 && (
                   <>
-                    <Button type="button" variant="ghost" size="icon" aria-label="Undo" disabled={stepIndex <= 0} onClick={() => setStepIndex(Math.max(0, stepIndex - 1))}>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Undo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
                       <Undo2 className="size-4" />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex <= 0} onClick={() => setStepIndex(Math.max(0, stepIndex - 1))}>
                       <Redo2 className="size-4" />
                     </Button>
                   </>
@@ -231,29 +243,7 @@ function computeHighlights(beforeText: string, afterText: string) {
 }
 
 // Heuristic: group structural additions of a single attribute (key+value lines) as one change
-function changeCountFromHighlights(beforeText: string, afterText: string, highlights: { added: Set<number>; removed: Set<number> }, clusterLen: number) {
-  if (!afterText) return 0;
-  // Start with cluster count as baseline
-  let count = clusterLen;
-  const lines = afterText.split("\n");
-  // If two consecutive added lines contain '"key"' and '"value"', treat them as one change
-  const added = Array.from(highlights.added).sort((a, b) => a - b);
-  for (let i = 0; i < added.length - 1; i++) {
-    const a = added[i];
-    const b = added[i + 1];
-    if (b === a + 1) {
-      const la = lines[a]?.trim() ?? "";
-      const lb = lines[b]?.trim() ?? "";
-      const looksLikeKey = /"key"\s*:/.test(la) || /"key"\s*:/.test(lb);
-      const looksLikeValue = /"value"\s*:/.test(la) || /"value"\s*:/.test(lb);
-      if (looksLikeKey && looksLikeValue && count > 0) {
-        count -= 1; // merge the pair into a single change
-        i++; // skip next since merged
-      }
-    }
-  }
-  return Math.max(count, 0);
-}
+// intentionally unused for now
 
 function renderHighlighted(text: string, highlights: { added: Set<number>; removed: Set<number>; removedMap?: Map<number, string> }) {
   const lines = text.split("\n");

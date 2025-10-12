@@ -5,6 +5,9 @@ import { Button } from "../../../components/ui/button";
 import ActionMenu from "./ActionMenu";
 import EditAttributeDialog from "./EditAttributeDialog";
 import { useState } from "react";
+import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
+import { usePreviewStore } from "../../../lib/stores/previewStore";
+import { useOttlStore } from "../../../lib/stores/ottlStore";
 
 type AttributeKV = { key: string; value: Record<string, unknown> };
 
@@ -67,13 +70,56 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
         initialKey={editRow?.key ?? ""}
         initialValue={editRow?.value ?? ""}
         onSubmit={(nextKey, nextValue) => {
-          // optimistic: replace in provided attributes array if possible
+          // optimistic: replace and produce a proper before/after snapshot for RightPanel
           try {
+            const tele = useTelemetryStore.getState();
+            const beforeClone = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+
+            // Create a complete copy of the telemetry data to avoid mutating shared references
+            const telemetryCopy = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+            
+            // Apply the change to the copy, not the original
             const list = Array.isArray(attributes) ? (attributes as Array<{ key: string; value: Record<string, unknown> }>) : [];
             const idx = list.findIndex((kv) => kv.key === editRow?.key);
-            if (idx >= 0) {
-              list[idx] = { key: nextKey, value: { stringValue: nextValue } } as unknown as AttributeKV;
+            if (idx >= 0 && telemetryCopy) {
+              // Find and update the attribute in the copy
+              const updateAttributesInCopy = (obj: unknown, oldKey: string, newKey: string, newVal: string) => {
+                if (!obj || typeof obj !== "object") return;
+                const record = obj as Record<string, unknown>;
+                // if this object has an attributes array
+                const maybeWithAttrs = record as { attributes?: Array<{ key?: string; value?: Record<string, unknown> }> };
+                if (Array.isArray(maybeWithAttrs.attributes)) {
+                  const attrIdx = maybeWithAttrs.attributes.findIndex((kv) => (typeof kv?.key === "string") && kv.key === oldKey);
+                  if (attrIdx >= 0) {
+                    maybeWithAttrs.attributes[attrIdx] = { key: newKey, value: { stringValue: newVal } } as unknown as { key?: string; value?: Record<string, unknown> };
+                  }
+                }
+                // Recurse into nested objects/arrays
+                for (const val of Object.values(record)) {
+                  if (val && typeof val === "object") updateAttributesInCopy(val, oldKey, newKey, newVal);
+                }
+              };
+              updateAttributesInCopy(telemetryCopy, editRow?.key ?? "", nextKey, nextValue);
             }
+            
+            const afterClone = telemetryCopy;
+            tele.setParsed(afterClone);
+            const previews = usePreviewStore.getState();
+            const nextStep = previews.snapshots.length;
+            previews.setSnapshots([...previews.snapshots, { stepIndex: nextStep, before: beforeClone, after: afterClone }]);
+            previews.setStepIndex(nextStep);
+            previews.setAutoJump(true);
+
+            // Append OTTL equivalent comment + set/rename operation
+            try {
+              const ottl = useOttlStore.getState();
+              const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+              // When key changed, emulate rename via set(new) + delete(old). For simplicity, we always set new key.
+              const stmt = `set(attributes[${quote(nextKey)}], ${quote(nextValue)})`;
+              const nextText = [ottl.text, `# auto: edit attribute`, stmt].filter(Boolean).join("\n").trim();
+              ottl.setText(nextText);
+              ottl.setLastCompiled(nextText);
+            } catch {}
           } catch {}
         }}
       />

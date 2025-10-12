@@ -228,13 +228,16 @@ export default function CanvasView() {
                 dpObj.attributes = insertWithPolicy(dpObj.attributes);
               }
             }
+            // Capture the before state BEFORE updating parsed (deep clone to avoid reference issues)
+            const beforeVal = structuredClone(parsed) as unknown as import("../../lib/ottl/types").JSONValue;
+            const afterVal = structuredClone(cloned) as unknown as import("../../lib/ottl/types").JSONValue;
+            
             setParsed(cloned as unknown as import("../../lib/ottl/types").JSONValue);
+            
             // Push a lightweight snapshot so RightPanel shows an After diff
             import("../../lib/stores/previewStore").then((mod) => {
               const previews = mod.usePreviewStore.getState();
               const nextStep = previews.snapshots.length;
-              const beforeVal = parsed as unknown as import("../../lib/ottl/types").JSONValue;
-              const afterVal = cloned as unknown as import("../../lib/ottl/types").JSONValue;
               previews.setSnapshots([...previews.snapshots, { stepIndex: nextStep, before: beforeVal, after: afterVal }]);
               previews.setStepIndex(nextStep);
               previews.setAutoJump(true);
