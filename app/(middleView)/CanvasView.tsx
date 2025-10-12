@@ -54,7 +54,7 @@ function renderBySignal(
   }
   if (signal === "traces") return renderTraces(parsed as TracesDocView);
   if (signal === "logs") return renderLogs(parsed as LogsDocView, opts!);
-  if (signal === "metrics") return renderMetrics(parsed as MetricsDocView);
+  if (signal === "metrics") return renderMetrics(parsed as MetricsDocView, opts!);
   return <p className="text-sm text-muted-foreground">Unsupported telemetry format.</p>;
 }
 
@@ -237,69 +237,104 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
 
 // (helper removed; inline rendering used in renderLogs)
 
-function renderMetrics(doc: MetricsDocView) {
+function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
   const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
   if (rms.length === 0) return <p className="text-sm text-muted-foreground">No metric content.</p>;
 
-  const first = rms[0];
   const sections: ReactNode[] = [];
+
+  // Resource (only if attributes exist)
+  const first = rms[0];
+  const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
+  if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
+    sections.push(
+      <Collapsible key="resource" title="Resource">
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+      </Collapsible>
+    );
+  }
+
+  // View switcher (reuse grouped/flat toggle for metrics)
   sections.push(
-    <Collapsible key="resource" title="Resource">
-      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-    </Collapsible>
+    <section key="metrics-view" className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">View:</span>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "grouped" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("grouped")}>Grouped</button>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "flat" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("flat")}>Flat</button>
+    </section>
   );
 
-  const scopeMetrics = rms.flatMap((rm) => asArray<ScopeMetricsView>(rm.scopeMetrics));
-  sections.push(
-    <Collapsible key="scopes" title="Scopes" defaultOpen>
-      <section className="space-y-3">
-        {scopeMetrics.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No scopes.</p>
-        ) : (
-          scopeMetrics.map((sm, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
-              <AttributesTable attributes={(sm as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-              {renderMetricSeries(asArray<MetricView>(sm.metrics))}
+  const scopeMetricsAll = rms.flatMap((rm) => asArray<ScopeMetricsView>(rm.scopeMetrics));
+
+  if (opts.logsView === "grouped") {
+    sections.push(
+      <section key="grouped-metrics" className="space-y-3">
+        {scopeMetricsAll.map((sm, i) => {
+          const sc = (sm as unknown as { scope?: { name?: string; version?: string; attributes?: AttributeKV[] } }).scope;
+          const label = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || `Scope ${i + 1}`;
+          const metrics = asArray<MetricView>(sm.metrics);
+          const hasScopeAttrs = Array.isArray(sc?.attributes) && sc!.attributes!.length > 0;
+          const hasMetrics = metrics.length > 0;
+          if (!hasScopeAttrs && !hasMetrics) return null;
+          return (
+            <Collapsible key={`metric-scope-${i}`} title={`Scope: ${label}`} defaultOpen>
+              {hasScopeAttrs && (
+                <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+              )}
+              {hasMetrics && (
+                <section className="space-y-3">
+                  {metrics.flatMap((m, mi) => {
+                    const dps = metricDatapointsOf(m);
+                    return dps.map((dp, di) => (
+                      <Collapsible
+                        key={`dp-${i}-${mi}-${di}`}
+                        title={`Datapoint ${di + 1}`}
+                        subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}
+                      >
+                        <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                      </Collapsible>
+                    ));
+                  })}
+                </section>
+              )}
             </Collapsible>
-          ))
-      )}
-    </section>
-    </Collapsible>
-  );
+          );
+        })}
+      </section>
+    );
+  } else {
+    const allMetrics: Array<{ scopeLabel?: string; metric: MetricView }> = [];
+    for (const sm of scopeMetricsAll) {
+      const sc = (sm as unknown as { scope?: { name?: string; version?: string } }).scope;
+      const scopeLabel = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || undefined;
+      for (const m of asArray<MetricView>(sm.metrics)) allMetrics.push({ scopeLabel, metric: m });
+    }
+    if (allMetrics.length) {
+      const allDps: Array<{ scopeLabel?: string; metric: MetricView; dp: DataPointView; idx: number }> = [];
+      allMetrics.forEach(({ scopeLabel, metric }) => {
+        for (const dp of metricDatapointsOf(metric)) allDps.push({ scopeLabel, metric, dp, idx: allDps.length + 1 });
+      });
+      if (allDps.length) {
+        sections.push(
+          <Collapsible key="flat-dps" title="Datapoints" defaultOpen>
+            <section className="space-y-3">
+              {allDps.map(({ metric, scopeLabel, dp, idx }) => (
+                <Collapsible key={`dp-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
+                  <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                </Collapsible>
+              ))}
+            </section>
+          </Collapsible>
+        );
+      }
+    }
+  }
 
   return <section className="space-y-3">{sections}</section>;
 }
 
-function renderMetricSeries(metrics: MetricView[]) {
-  if (!metrics.length) return <p className="text-sm text-muted-foreground">No metrics.</p>;
-  return (
-    <Collapsible title="Metrics" defaultOpen>
-      <section className="space-y-3">
-        {metrics.map((m, i) => (
-          <Collapsible key={keyForMetric(m)} title={m.name ?? `Metric ${i + 1}`} subtitle={[m.unit, m.description].filter(Boolean).join(" • ") || undefined}>
-            {renderDatapoints(m)}
-          </Collapsible>
-        ))}
-      </section>
-    </Collapsible>
-  );
-}
+// (no standalone metric series renderer; we render datapoints directly under scopes)
 
-function renderDatapoints(m: MetricView) {
-  const dps = metricDatapointsOf(m);
-  if (!dps.length) return <p className="text-sm text-muted-foreground">No datapoints.</p>;
-  return (
-    <Collapsible title="Datapoints" defaultOpen>
-      <section className="space-y-3">
-        {dps.map((dp: DataPointView, i: number) => (
-          <Collapsible key={`${m.name ?? "metric"}-dp-${i}`} title={`Datapoint ${i + 1}`} subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
-            <AttributesTable title="Labels" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-          </Collapsible>
-        ))}
-      </section>
-    </Collapsible>
-  );
-}
+// datapoint renderer inlined where used
 
 function metricDatapointsOf(m: MetricView): DataPointView[] {
   if (m.sum?.dataPoints) return m.sum.dataPoints as DataPointView[];
@@ -311,6 +346,6 @@ function metricDatapointsOf(m: MetricView): DataPointView[] {
 function asArray<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []; }
 function keyFallback(): string { return Math.random().toString(36).slice(2); }
 function keyForLog(lr: LogRecordView): string { return lr.timeUnixNano ?? (typeof lr.body === "string" ? lr.body.slice(0, 32) : undefined) ?? keyFallback(); }
-function keyForMetric(m: MetricView): string { return m.name ?? keyFallback(); }
+// function keyForMetric(m: MetricView): string { return m.name ?? keyFallback(); }
 
 
