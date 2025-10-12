@@ -22,7 +22,18 @@ export default function Collapsible({ title, subtitle, defaultOpen = true, child
             {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
           </section>
           <section className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="icon" aria-label={open ? "Collapse" : "Expand"} className={`transition-transform ${open ? "rotate-180" : "rotate-0"}`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={open ? "Collapse" : "Expand"}
+              aria-expanded={open}
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen((v) => !v);
+              }}
+              className={`transition-transform ${open ? "rotate-180" : "rotate-0"}`}
+            >
               <ChevronDown className="size-4" />
             </Button>
           </section>
