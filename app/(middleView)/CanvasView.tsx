@@ -60,8 +60,8 @@ function renderTraces(doc: TracesDocView) {
   const resourceAttrs = (rss[0] as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <Collapsible key="resource" title="Resource" onAddAttribute={() => {}}>
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} />
+      <Collapsible key="resource" title="Resource">
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
       </Collapsible>
     );
   }
@@ -74,8 +74,8 @@ function renderTraces(doc: TracesDocView) {
       <Collapsible key="scopes" title="Scopes" defaultOpen>
         <section className="space-y-3">
           {scopesWithAttrs.map((ss, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} onAddAttribute={() => {}}>
-              <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
+              <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
             </Collapsible>
           ))}
         </section>
@@ -97,8 +97,8 @@ function renderSpans(spans: SpanView[]) {
     <Collapsible title="Spans" defaultOpen>
       <section className="space-y-3">
         {spans.map((sp, idx) => (
-          <Collapsible key={sp.spanId ?? `${sp.name ?? "span"}-${idx}`} title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined} onAddAttribute={() => {}}>
-            <AttributesTable attributes={sp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+          <Collapsible key={sp.spanId ?? `${sp.name ?? "span"}-${idx}`} title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined}>
+            <AttributesTable attributes={sp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
             {renderSpanEvents(sp as unknown as { events?: Array<{ attributes?: AttributeKV[] }> })}
             {renderSpanLinks(sp as unknown as { links?: Array<{ attributes?: AttributeKV[] }> })}
           </Collapsible>
@@ -145,8 +145,8 @@ function renderLogs(doc: LogsDocView) {
   const first = rls[0];
   const sections: ReactNode[] = [];
   sections.push(
-    <Collapsible key="resource" title="Resource" onAddAttribute={() => {}}>
-      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+    <Collapsible key="resource" title="Resource">
+      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
     </Collapsible>
   );
 
@@ -158,8 +158,8 @@ function renderLogs(doc: LogsDocView) {
           <p className="text-sm text-muted-foreground">No scopes.</p>
         ) : (
           scopeLogs.map((sl, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} onAddAttribute={() => {}}>
-              <AttributesTable attributes={(sl as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
+              <AttributesTable attributes={(sl as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
               {renderLogRecords(asArray<LogRecordView>(sl.logRecords))}
             </Collapsible>
           ))
@@ -177,8 +177,8 @@ function renderLogRecords(records: LogRecordView[]) {
     <Collapsible title="Log records" defaultOpen>
       <section className="space-y-3">
         {records.map((lr, i) => (
-          <Collapsible key={keyForLog(lr)} title={lr.severityText ?? `Record ${i + 1}`} subtitle={lr.timeUnixNano} onAddAttribute={() => {}}>
-            <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+          <Collapsible key={keyForLog(lr)} title={lr.severityText ?? `Record ${i + 1}`} subtitle={lr.timeUnixNano}>
+            <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
           </Collapsible>
         ))}
       </section>
@@ -193,8 +193,8 @@ function renderMetrics(doc: MetricsDocView) {
   const first = rms[0];
   const sections: ReactNode[] = [];
   sections.push(
-    <Collapsible key="resource" title="Resource" onAddAttribute={() => {}}>
-      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+    <Collapsible key="resource" title="Resource">
+      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
     </Collapsible>
   );
 
@@ -206,8 +206,8 @@ function renderMetrics(doc: MetricsDocView) {
           <p className="text-sm text-muted-foreground">No scopes.</p>
         ) : (
           scopeMetrics.map((sm, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} onAddAttribute={() => {}}>
-              <AttributesTable attributes={(sm as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
+              <AttributesTable attributes={(sm as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
               {renderMetricSeries(asArray<MetricView>(sm.metrics))}
             </Collapsible>
           ))
@@ -225,7 +225,7 @@ function renderMetricSeries(metrics: MetricView[]) {
     <Collapsible title="Metrics" defaultOpen>
       <section className="space-y-3">
         {metrics.map((m, i) => (
-          <Collapsible key={keyForMetric(m)} title={m.name ?? `Metric ${i + 1}`} subtitle={[m.unit, m.description].filter(Boolean).join(" • ") || undefined} onAddAttribute={() => {}}>
+          <Collapsible key={keyForMetric(m)} title={m.name ?? `Metric ${i + 1}`} subtitle={[m.unit, m.description].filter(Boolean).join(" • ") || undefined}>
             {renderDatapoints(m)}
           </Collapsible>
         ))}
@@ -241,8 +241,8 @@ function renderDatapoints(m: MetricView) {
     <Collapsible title="Datapoints" defaultOpen>
       <section className="space-y-3">
         {dps.map((dp: DataPointView, i: number) => (
-          <Collapsible key={`${m.name ?? "metric"}-dp-${i}`} title={`Datapoint ${i + 1}`} subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined} onAddAttribute={() => {}}>
-            <AttributesTable title="Labels" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
+          <Collapsible key={`${m.name ?? "metric"}-dp-${i}`} title={`Datapoint ${i + 1}`} subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
+            <AttributesTable title="Labels" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
           </Collapsible>
         ))}
       </section>

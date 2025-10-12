@@ -1,18 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { ChevronDown } from "lucide-react";
 
 type Props = {
   title: string;
   subtitle?: string;
   defaultOpen?: boolean;
-  onAddAttribute?: () => void;
   children?: React.ReactNode;
 };
 
-export default function Collapsible({ title, subtitle, defaultOpen = true, onAddAttribute, children }: Props) {
+export default function Collapsible({ title, subtitle, defaultOpen = true, children }: Props) {
+  const [open, setOpen] = useState<boolean>(defaultOpen);
   return (
-    <details className="rounded-md border bg-card text-card-foreground" open={defaultOpen}>
+    <details className="rounded-md border bg-card text-card-foreground" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="cursor-pointer list-none">
         <header className="flex items-center justify-between gap-2 p-3">
           <section className="min-w-0">
@@ -20,12 +22,9 @@ export default function Collapsible({ title, subtitle, defaultOpen = true, onAdd
             {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
           </section>
           <section className="flex items-center gap-2">
-            {onAddAttribute && (
-              <Button type="button" variant="outline" size="sm" className="rounded-[6px]" onClick={(e) => {
-                e.preventDefault();
-                onAddAttribute?.();
-              }}>Add attribute</Button>
-            )}
+            <Button type="button" variant="ghost" size="icon" aria-label={open ? "Collapse" : "Expand"} className={`transition-transform ${open ? "rotate-180" : "rotate-0"}`}>
+              <ChevronDown className="size-4" />
+            </Button>
           </section>
         </header>
       </summary>

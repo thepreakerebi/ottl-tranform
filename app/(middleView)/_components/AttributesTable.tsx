@@ -15,15 +15,19 @@ type Props = {
   title?: string;
   attributes?: unknown;
   actions?: RowActions;
+  onAddAttribute?: () => void;
 };
 
-export default function AttributesTable({ title = "Attributes", attributes, actions }: Props) {
+export default function AttributesTable({ title = "Attributes", attributes, actions, onAddAttribute }: Props) {
   const rows = normalizeAttributes(attributes);
   if (rows.length === 0) return null;
   return (
     <section aria-label={title} className="mt-3">
-      <header className="mb-2">
+      <header className="mb-2 flex items-center justify-between gap-2">
         <Label className="text-xs font-medium">{title}</Label>
+        {onAddAttribute && (
+          <Button type="button" variant="outline" size="sm" className="rounded-[6px]" onClick={onAddAttribute}>Add attribute</Button>
+        )}
       </header>
       <table className="w-full text-xs">
         <thead>
