@@ -172,7 +172,10 @@ export default function RightPanel() {
 }
 
 function blockLabel(type: string, idx: number) {
-  const title = humanizeType(type || "Step");
+  if (!type || type === "Step") {
+    return `Step ${idx + 1}`;
+  }
+  const title = humanizeType(type);
   return `Step ${idx + 1}: ${title}`;
 }
 
