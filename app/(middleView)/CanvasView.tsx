@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import AttributesTable from "./_components/AttributesTable";
 import Collapsible from "./_components/Collapsible";
+import AddAttributeDialog from "./_components/AddAttributeDialog";
 
 // Minimal OTLP view models (read-only)
 type AttributeKV = { key: string; value: Record<string, unknown> };
@@ -34,12 +35,30 @@ export default function CanvasView() {
 
   // Logs view mode: grouped by scope (default) or flat list
   const [logsView, setLogsView] = useState<"grouped" | "flat">("grouped");
+  // Add attribute modal
+  const [addOpen, setAddOpen] = useState(false);
+  const [addTarget, setAddTarget] = useState<{ title: string; path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] } } | null>(null);
 
-  const content = useMemo(() => renderBySignal(parsed, signal, { logsView, setLogsView }), [parsed, signal, logsView]);
+  const openAdd = (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => {
+    setAddTarget({ title, path });
+    setAddOpen(true);
+  };
+
+  const content = useMemo(() => renderBySignal(parsed, signal, { logsView, setLogsView, openAdd }), [parsed, signal, logsView]);
 
   return (
     <section aria-label="Canvas" className="h-full overflow-y-auto overflow-x-hidden p-4">
       {content}
+      <AddAttributeDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        targetTitle={addTarget?.title ?? ""}
+        onSubmit={(key, value) => {
+          // Placeholder: immediate mutation for preview-only (no persistence here)
+          // In a full implementation, dispatch a transform to the worker/history
+          console.log("Add attribute", key, value, addTarget);
+        }}
+      />
     </section>
   );
 }
@@ -47,7 +66,7 @@ export default function CanvasView() {
 function renderBySignal(
   parsed: unknown,
   signal: string,
-  opts?: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }
+  opts?: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void; openAdd: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void }
 ) {
   if (!parsed) {
     return <p className="text-sm text-muted-foreground">Paste telemetry data to begin.</p>;
@@ -58,7 +77,7 @@ function renderBySignal(
   return <p className="text-sm text-muted-foreground">Unsupported telemetry format.</p>;
 }
 
-function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
+function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void; openAdd: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void }) {
   const rss = asArray<ResourceSpansView>(doc.resourceSpans);
   if (rss.length === 0) return <p className="text-sm text-muted-foreground">No trace content.</p>;
 
@@ -68,7 +87,7 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
       <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
       </Collapsible>
     );
   }
@@ -93,7 +112,7 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
             {scopesWithAttrsOrSpans.map((ss, i) => (
               <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} defaultOpen>
                 {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
-                  <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                  <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
                 )}
                 {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans)}
               </Collapsible>
@@ -159,7 +178,7 @@ function renderSpanLinks(sp: { links?: Array<{ attributes?: AttributeKV[] }> }) 
   );
 }
 
-function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
+function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void; openAdd: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void }) {
   const rls = asArray<ResourceLogsView>(doc.resourceLogs);
   if (rls.length === 0) return <p className="text-sm text-muted-foreground">No log content.</p>;
 
@@ -170,7 +189,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
       <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
       </Collapsible>
     );
   }
@@ -199,14 +218,14 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
           return (
             <Collapsible key={`scope-block-${i}`} title={`Scope: ${label}`} defaultOpen>
               {Array.isArray(sc?.attributes) && sc.attributes.length > 0 && (
-                <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
               )}
               {recordsWithAttrs.length > 0 && (
                 <Collapsible title="Log records" defaultOpen>
                   <section className="space-y-3">
                     {recordsWithAttrs.map((lr, j) => (
                       <Collapsible key={`rec-${i}-${j}-${keyForLog(lr)}`} title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
-                        <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                        <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${j + 1}`, { kind: "log", indexPath: [i, j] })} />
                       </Collapsible>
                     ))}
                   </section>
