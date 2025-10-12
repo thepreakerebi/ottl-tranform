@@ -79,16 +79,7 @@ export default function RightPanel() {
               <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
                 <Redo2 className="size-4" />
               </Button>
-              <Select value={String(stepIndex)} onValueChange={(v) => setStepIndex(Number(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select step" />
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
             </>
           )}
         </section>
@@ -103,20 +94,39 @@ export default function RightPanel() {
         ) : (
           <div className="h-full flex flex-col">
             {/* History list */}
-            <div className="px-4 py-2 border-b text-xs flex items-center justify-between gap-2 flex-shrink-0 bg-muted/30">
-              <div className="overflow-x-auto whitespace-nowrap flex-1">
+            <div className="px-4 py-2 border-b text-xs flex-shrink-0 bg-muted/30">
+              <div className="overflow-x-auto whitespace-nowrap">
                 {options.map((o, i) => (
                   <button
                     key={o.value}
                     type="button"
                     className={`mr-2 px-2 py-1 rounded border ${i === stepIndex ? "bg-secondary" : "hover:bg-accent"}`}
-                    onClick={() => setStepIndex(i)}
+                    onClick={() => {
+                      setStepIndex(i);
+                      // Auto-scroll to first change after step change
+                      setTimeout(() => {
+                        const newCurrent = snapshots[i];
+                        if (newCurrent) {
+                          const newAfterStr = pretty(newCurrent.after);
+                          const newDiffHighlights = computeHighlights(pretty(newCurrent.before), newAfterStr);
+                          const newUnion = new Set<number>();
+                          newDiffHighlights.added.forEach((idx) => newUnion.add(idx));
+                          newDiffHighlights.removed.forEach((idx) => newUnion.add(idx));
+                          const newHighlightList = clusterHighlights(newUnion);
+                          
+                          if (newHighlightList.length > 0) {
+                            const target = newHighlightList[0];
+                            const afterEl = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
+                            afterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }
+                        }
+                      }, 200);
+                    }}
                   >
                     {o.label}
                   </button>
                 ))}
               </div>
-              <span className="text-muted-foreground hidden sm:inline">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
             </div>
             {/* Fixed After header */}
             <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
