@@ -5,7 +5,7 @@ import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
-import { ArrowDown, Copy, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowDown, Copy, Undo2, Redo2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { toast } from "sonner";
 
@@ -25,9 +25,8 @@ export default function RightPanel() {
   }, [snapshots, blocks]);
 
   const current = snapshots[stepIndex];
-  const beforeStr = useMemo(() => pretty(current?.before), [current]);
   const afterStr = useMemo(() => pretty(current?.after), [current]);
-  const diffHighlights = useMemo(() => computeHighlights(beforeStr, afterStr), [beforeStr, afterStr]);
+  const diffHighlights = useMemo(() => computeHighlights(pretty(current?.before), afterStr), [current, afterStr]);
   const unionForClusters = useMemo(() => {
     const u = new Set<number>();
     diffHighlights.added.forEach((i) => u.add(i));
@@ -36,27 +35,15 @@ export default function RightPanel() {
   }, [diffHighlights]);
   const highlightList = useMemo(() => clusterHighlights(unionForClusters), [unionForClusters]);
   const [jumpIndex, setJumpIndex] = useState(0);
-  // firstChanged retained conceptually; header button logic uses highlightList directly
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const beforeContentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
-  const [beforeExpanded, setBeforeExpanded] = useState(true);
 
   // Shared function to jump to transformation points in both sections
   const jumpToTransformationPoint = () => {
     if (highlightList.length === 0) return;
     const target = highlightList[jumpIndex] ?? highlightList[0];
-    
-    // Jump in After section
     const afterEl = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
     afterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    
-    // Jump in Before section (if expanded)
-    if (beforeExpanded && beforeContentRef.current) {
-      const beforeEl = beforeContentRef.current.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
-      beforeEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-    
     setJumpIndex((i) => (i + 1) % highlightList.length);
   };
 
@@ -64,21 +51,11 @@ export default function RightPanel() {
   useEffect(() => {
     if (!shouldAutoJump || highlightList.length === 0) return;
     const target = highlightList[0];
-    
-    // Auto-jump in After section
     const afterEl = contentRef.current?.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
     afterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    
-    // Auto-jump in Before section (if expanded)
-    if (beforeExpanded && beforeContentRef.current) {
-      const beforeEl = beforeContentRef.current.querySelector(`[data-line="${target}"]`) as HTMLElement | null;
-      beforeEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-    
     setAutoJump(false);
-  // We intentionally depend only on shouldAutoJump + list length so the deps array size is stable across renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldAutoJump, highlightList.length, beforeExpanded]);
+  }, [shouldAutoJump, highlightList.length]);
 
   // When new snapshots arrive (e.g., after Run), default to the last step.
   useEffect(() => {
@@ -93,20 +70,28 @@ export default function RightPanel() {
       {/* Fixed header - never scrolls */}
       <header className="flex items-center justify-between gap-3 p-4 border-b flex-shrink-0">
         <h2 className="text-sm font-semibold">Preview</h2>
-        {snapshots.length > 0 && (
-          <nav aria-label="Step selector">
-            <Select value={String(stepIndex)} onValueChange={(v) => setStepIndex(Number(v))}>
-              <SelectTrigger className="min-w-[220px]">
-                <SelectValue placeholder="Select step" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </nav>
-        )}
+        <section className="flex items-center gap-2">
+          {snapshots.length > 0 && (
+            <>
+              <Button type="button" variant="ghost" size="icon" aria-label="Undo" disabled={stepIndex <= 0} onClick={() => setStepIndex(Math.max(0, stepIndex - 1))}>
+                <Undo2 className="size-4" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
+                <Redo2 className="size-4" />
+              </Button>
+              <Select value={String(stepIndex)} onValueChange={(v) => setStepIndex(Number(v))}>
+                <SelectTrigger className="min-w-[220px]">
+                  <SelectValue placeholder="Select step" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+        </section>
       </header>
 
       {/* Scrollable content area */}
@@ -117,6 +102,22 @@ export default function RightPanel() {
           </div>
         ) : (
           <div className="h-full flex flex-col">
+            {/* History list */}
+            <div className="px-4 py-2 border-b text-xs flex items-center justify-between gap-2 flex-shrink-0 bg-muted/30">
+              <div className="overflow-x-auto whitespace-nowrap flex-1">
+                {options.map((o, i) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`mr-2 px-2 py-1 rounded border ${i === stepIndex ? "bg-secondary" : "hover:bg-accent"}`}
+                    onClick={() => setStepIndex(i)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-muted-foreground hidden sm:inline">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
+            </div>
             {/* Fixed After header */}
             <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
               <section className="flex items-center gap-1">
@@ -163,43 +164,6 @@ export default function RightPanel() {
                 </TooltipProvider>
               </div>
             </div>
-            
-            {/* Before section header */}
-            <div className="px-4 py-2 border-t border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
-              <section className="flex items-center gap-1">
-                <span>Before</span>
-                {beforeExpanded && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Jump to first change"
-                    disabled={highlightList.length === 0}
-                    onClick={jumpToTransformationPoint}
-                  >
-                    <ArrowDown className="size-4" />
-                  </Button>
-                )}
-              </section>
-              <button
-                type="button"
-                aria-expanded={beforeExpanded}
-                onClick={() => setBeforeExpanded((v) => !v)}
-                className="rounded px-2 py-1 text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-              >
-                {beforeExpanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-                <span className="sr-only">Toggle before section</span>
-              </button>
-            </div>
-            
-            {/* Before section - takes the other half of the remaining height when expanded */}
-            {beforeExpanded && (
-              <div className="flex-1 min-h-0 overflow-auto" ref={beforeContentRef}>
-                <div className="p-4">
-                  {renderPlainWithLineNumbers(beforeStr)}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -275,27 +239,7 @@ function renderHighlighted(text: string, highlights: { added: Set<number>; remov
   );
 }
 
-function renderPlain(text: string) {
-  const lines = text.split("\n");
-  return (
-    <section>
-      {lines.map((ln, i) => (
-        <div key={i} className="text-xs leading-5 font-mono whitespace-pre">{ln || "\u00A0"}</div>
-      ))}
-    </section>
-  );
-}
-
-function renderPlainWithLineNumbers(text: string) {
-  const lines = text.split("\n");
-  return (
-    <section>
-      {lines.map((ln, i) => (
-        <div key={i} data-line={i} className="text-xs leading-5 font-mono whitespace-pre">{ln || "\u00A0"}</div>
-      ))}
-    </section>
-  );
-}
+// removed before-area render helpers as the panel is now After-only
 
 function clusterHighlights(highlights: Set<number>): number[] {
   const sorted = Array.from(highlights).sort((a, b) => a - b);
