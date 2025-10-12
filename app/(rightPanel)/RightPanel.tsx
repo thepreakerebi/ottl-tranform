@@ -68,21 +68,8 @@ export default function RightPanel() {
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
       {/* Fixed header - never scrolls */}
-      <header className="flex items-center justify-between gap-3 p-4 border-b flex-shrink-0">
+      <header className="flex items-center gap-3 p-4 border-b flex-shrink-0">
         <h2 className="text-sm font-semibold">Preview</h2>
-        <section className="flex items-center gap-2">
-          {snapshots.length > 0 && (
-            <>
-              <Button type="button" variant="ghost" size="icon" aria-label="Undo" disabled={stepIndex <= 0} onClick={() => setStepIndex(Math.max(0, stepIndex - 1))}>
-                <Undo2 className="size-4" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
-                <Redo2 className="size-4" />
-              </Button>
-
-            </>
-          )}
-        </section>
       </header>
 
       {/* Scrollable content area */}
@@ -131,7 +118,16 @@ export default function RightPanel() {
             {/* Fixed After header */}
             <div className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between flex-shrink-0 bg-muted/50">
               <section className="flex items-center gap-1">
-                <span>After</span>
+                {snapshots.length > 0 && (
+                  <>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Undo" disabled={stepIndex <= 0} onClick={() => setStepIndex(Math.max(0, stepIndex - 1))}>
+                      <Undo2 className="size-4" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Redo" disabled={stepIndex >= snapshots.length - 1} onClick={() => setStepIndex(Math.min(snapshots.length - 1, stepIndex + 1))}>
+                      <Redo2 className="size-4" />
+                    </Button>
+                  </>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
