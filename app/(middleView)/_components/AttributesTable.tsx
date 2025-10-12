@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/button";
 import ActionMenu from "./ActionMenu";
 import EditAttributeDialog from "./EditAttributeDialog";
 import MaskAttributeDialog from "./MaskAttributeDialog";
+import RemoveAttributeDialog from "./RemoveAttributeDialog";
 import { useState } from "react";
 import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 import { usePreviewStore } from "../../../lib/stores/previewStore";
@@ -30,6 +31,8 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
   const [editRow, setEditRow] = useState<{ key: string; value: string } | null>(null);
   const [maskOpen, setMaskOpen] = useState(false);
   const [maskRow, setMaskRow] = useState<{ key: string; value: string } | null>(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeRow, setRemoveRow] = useState<{ key: string; value: string } | null>(null);
   if (rows.length === 0) return null;
   return (
     <section aria-label={title} className="mt-3">
@@ -59,7 +62,7 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
                   <ActionMenu
                     onEdit={() => { setEditRow(r); setEditOpen(true); }}
                     onMask={() => { setMaskRow(r); setMaskOpen(true); }}
-                    onRemove={actions.onRemove ? () => actions.onRemove?.(r.key) : undefined}
+                    onRemove={() => { setRemoveRow(r); setRemoveOpen(true); }}
                   />
                 </td>
               ) : null}
@@ -173,6 +176,44 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
               : `Concat([Substring(attributes[${quote(maskRow?.key ?? "")}], 0, ${start}), Repeat(${quote(maskChar)}, ${end} - ${start}), Substring(attributes[${quote(maskRow?.key ?? "")}], ${end})], "")`;
             const stmt = `set(attributes[${quote(maskRow?.key ?? "")}], ${maskExpr})`;
             const nextText = [ottl.text, `# auto: mask attribute`, stmt].filter(Boolean).join("\n").trim();
+            ottl.setText(nextText);
+            ottl.setLastCompiled(nextText);
+          } catch {}
+        }}
+      />
+      <RemoveAttributeDialog
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+        attributeKey={removeRow?.key ?? ""}
+        onConfirm={() => {
+          try {
+            const tele = useTelemetryStore.getState();
+            const beforeClone = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+            const telemetryCopy = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+            const removeAttr = (obj: unknown, targetKey: string) => {
+              if (!obj || typeof obj !== "object") return;
+              const rec = obj as Record<string, unknown>;
+              const maybeAttrs = rec as { attributes?: Array<{ key?: string; value?: Record<string, unknown> }> };
+              if (Array.isArray(maybeAttrs.attributes)) {
+                const idx = maybeAttrs.attributes.findIndex((kv) => (typeof kv?.key === "string") && kv.key === targetKey);
+                if (idx >= 0) maybeAttrs.attributes.splice(idx, 1);
+              }
+              for (const val of Object.values(rec)) if (val && typeof val === "object") removeAttr(val, targetKey);
+            };
+            if (telemetryCopy && removeRow?.key) removeAttr(telemetryCopy, removeRow.key);
+            const afterClone = telemetryCopy;
+            tele.setParsed(afterClone);
+            const previews = usePreviewStore.getState();
+            const nextStep = previews.snapshots.length;
+            previews.setSnapshots([...previews.snapshots, { stepIndex: nextStep, before: beforeClone, after: afterClone }]);
+            previews.setStepIndex(nextStep);
+            previews.setAutoJump(true);
+
+            // Append OTTL equivalent
+            const ottl = useOttlStore.getState();
+            const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+            const stmt = `delete_key(attributes, ${quote(removeRow?.key ?? "")})`;
+            const nextText = [ottl.text, `# auto: remove attribute`, stmt].filter(Boolean).join("\n").trim();
             ottl.setText(nextText);
             ottl.setLastCompiled(nextText);
           } catch {}
