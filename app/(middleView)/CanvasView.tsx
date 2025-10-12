@@ -54,34 +54,87 @@ export default function CanvasView() {
         open={addOpen}
         onOpenChange={setAddOpen}
         targetTitle={addTarget?.title ?? ""}
-        onSubmit={(key, value) => {
+        onSubmit={(payload) => {
           try {
             if (!addTarget) return;
-            const vobj = { stringValue: String(value) } as Record<string, unknown>;
-            const kv = { key, value: vobj } as unknown;
+            function computeValueFromContext(): string {
+              if (payload.mode === "literal") {
+                if (payload.literalType === "number") return String(Number(payload.value ?? ""));
+                if (payload.literalType === "boolean") return (payload.value ?? "").toLowerCase() === "true" ? "true" : "false";
+                return String(payload.value ?? "");
+              }
+              const sourceKey = String(payload.sourceAttr ?? "");
+              const start = payload.substringStart ?? 0;
+              const end = payload.substringEnd ?? null;
+              const readAttr = (arr: unknown[] | undefined) => {
+                const list = Array.isArray(arr) ? arr as Array<{ key?: string; value?: Record<string, unknown> }> : [];
+                const kv = list.find((k) => k && typeof k === "object" && k.key === sourceKey);
+                const sv = kv?.value?.stringValue as string | undefined;
+                return sv ?? "";
+              };
+              const currentTarget = addTarget!;
+              const kind = currentTarget.path.kind;
+              const idx = currentTarget.path.indexPath ?? [];
+              let source = "";
+              if (signal === "traces") {
+                const rss = asArray<ResourceSpansView>((parsed as unknown as TracesDocView)?.resourceSpans);
+                const rs0 = rss[0];
+                if (kind === "resource") source = readAttr((rs0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                else if (kind === "scope") source = readAttr((rs0 as unknown as { scopeSpans?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeSpans?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
+                else if (kind === "span") source = readAttr((rs0 as unknown as { scopeSpans?: Array<{ spans?: Array<{ attributes?: AttributeKV[] }> }> }).scopeSpans?.[(idx.length===2?idx[0]:0)]?.spans?.[(idx.length===2?idx[1]:idx[0]??0)]?.attributes as unknown[] | undefined);
+              } else if (signal === "logs") {
+                const rls = asArray<ResourceLogsView>((parsed as unknown as LogsDocView)?.resourceLogs);
+                const rl0 = rls[0];
+                if (kind === "resource") source = readAttr((rl0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                else if (kind === "scope") source = readAttr((rl0 as unknown as { scopeLogs?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeLogs?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
+                else if (kind === "log") source = readAttr((rl0 as unknown as { scopeLogs?: Array<{ logRecords?: Array<{ attributes?: AttributeKV[] }> }> }).scopeLogs?.[idx[0] ?? 0]?.logRecords?.[idx[1] ?? 0]?.attributes as unknown[] | undefined);
+              } else if (signal === "metrics") {
+                const rms = asArray<ResourceMetricsView>((parsed as unknown as MetricsDocView)?.resourceMetrics);
+                const rm0 = rms[0];
+                if (kind === "resource") source = readAttr((rm0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                else if (kind === "scope") source = readAttr((rm0 as unknown as { scopeMetrics?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeMetrics?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
+                else if (kind === "datapoint") {
+                  const sm = (rm0 as unknown as { scopeMetrics?: Array<{ metrics?: MetricView[] }> }).scopeMetrics?.[idx[0] ?? 0];
+                  const metric = (sm as unknown as { metrics?: MetricView[] })?.metrics?.[idx[1] ?? 0];
+                  const dpsArr = metricDatapointsOf(metric as MetricView);
+                  source = readAttr(Array.isArray(dpsArr) ? (dpsArr[idx[2] ?? 0]?.attributes as unknown[] | undefined) : undefined);
+                }
+              }
+              const slice = end == null ? source.slice(start) : source.slice(start, end);
+              return slice;
+            }
+
+            const finalString = computeValueFromContext();
+            const vobj = { stringValue: finalString } as Record<string, unknown>;
+            const kv = { key: payload.key, value: vobj } as { key: string; value: Record<string, unknown> };
             const cloned = parsed ? (JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>) : undefined;
             if (!cloned) return;
 
             const asRec = (v: unknown): Record<string, unknown> | undefined => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
             const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-            const kind = addTarget.path.kind;
-            const idx = addTarget.path.indexPath ?? [];
+            const currentTarget = addTarget!;
+            const kind = currentTarget.path.kind;
+            const idx = currentTarget.path.indexPath ?? [];
 
             if (signal === "traces") {
               const rss = asArr(cloned["resourceSpans"]);
               const rs0 = asRec(rss[0]);
               if (kind === "resource") {
                 const res = asRec(rs0?.["resource"]);
-                const resObj = res as unknown as { attributes?: unknown[] };
-                resObj.attributes = [...(resObj.attributes ?? []), kv];
+                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = resObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                resObj.attributes = arr;
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeSpans = asArr(rs0?.["scopeSpans"]);
                 const ss = asRec(scopeSpans[i]);
                 const scope = asRec(ss?.["scope"]);
-                const scObj = scope as unknown as { attributes?: unknown[] };
-                scObj.attributes = [...(scObj.attributes ?? []), kv];
+                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = scObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                scObj.attributes = arr;
               } else if (kind === "span") {
                 // indexPath: [scopeIndex?, spanIndex]
                 const scopeIndex = idx.length === 2 ? idx[0] : 0;
@@ -90,46 +143,58 @@ export default function CanvasView() {
                 const ss = asRec(scopeSpans[scopeIndex]);
                 const spans = asArr(ss?.["spans"]);
                 const sp = asRec(spans[spanIndex]);
-                const spObj = sp as unknown as { attributes?: unknown[] };
-                spObj.attributes = [...(spObj.attributes ?? []), kv];
+                const spObj = sp as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = spObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                spObj.attributes = arr;
               }
             } else if (signal === "logs") {
               const rls = asArr(cloned["resourceLogs"]);
               const rl0 = asRec(rls[0]);
               if (kind === "resource") {
                 const res = asRec(rl0?.["resource"]);
-                const resObj = res as unknown as { attributes?: unknown[] };
-                resObj.attributes = [...(resObj.attributes ?? []), kv];
+                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = resObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                resObj.attributes = arr;
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeLogs = asArr(rl0?.["scopeLogs"]);
                 const sl = asRec(scopeLogs[i]);
                 const scope = asRec(sl?.["scope"]);
-                const scObj = scope as unknown as { attributes?: unknown[] };
-                scObj.attributes = [...(scObj.attributes ?? []), kv];
+                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = scObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                scObj.attributes = arr;
               } else if (kind === "log") {
                 const i = idx[0] ?? 0; const j = idx[1] ?? 0;
                 const scopeLogs = asArr(rl0?.["scopeLogs"]);
                 const sl = asRec(scopeLogs[i]);
                 const logRecords = asArr(sl?.["logRecords"]);
                 const lr = asRec(logRecords[j]);
-                const lrObj = lr as unknown as { attributes?: unknown[] };
-                lrObj.attributes = [...(lrObj.attributes ?? []), kv];
+                const lrObj = lr as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = lrObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                lrObj.attributes = arr;
               }
             } else if (signal === "metrics") {
               const rms = asArr(cloned["resourceMetrics"]);
               const rm0 = asRec(rms[0]);
               if (kind === "resource") {
                 const res = asRec(rm0?.["resource"]);
-                const resObj = res as unknown as { attributes?: unknown[] };
-                resObj.attributes = [...(resObj.attributes ?? []), kv];
+                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = resObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                resObj.attributes = arr;
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
                 const sm = asRec(scopeMetrics[i]);
                 const scope = asRec(sm?.["scope"]);
-                const scObj = scope as unknown as { attributes?: unknown[] };
-                scObj.attributes = [...(scObj.attributes ?? []), kv];
+                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = scObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                scObj.attributes = arr;
               } else if (kind === "datapoint") {
                 const i = idx[0] ?? 0; const mi = idx[1] ?? 0; const di = idx[2] ?? 0;
                 const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
@@ -141,11 +206,23 @@ export default function CanvasView() {
                 const histogram = asRec(metric?.["histogram"]);
                 const dps = asArr(sum?.["dataPoints"] ?? gauge?.["dataPoints"] ?? histogram?.["dataPoints"]);
                 const dp = asRec(dps[di]);
-                const dpObj = dp as unknown as { attributes?: unknown[] };
-                dpObj.attributes = [...(dpObj.attributes ?? []), kv];
+                const dpObj = dp as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
+                const arr = dpObj.attributes ?? [];
+                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
+                dpObj.attributes = arr;
               }
             }
             setParsed(cloned as unknown as import("../../lib/ottl/types").JSONValue);
+            // Push a lightweight snapshot so RightPanel shows an After diff
+            import("../../lib/stores/previewStore").then((mod) => {
+              const previews = mod.usePreviewStore.getState();
+              const nextStep = previews.snapshots.length;
+              const beforeVal = parsed as unknown as import("../../lib/ottl/types").JSONValue;
+              const afterVal = cloned as unknown as import("../../lib/ottl/types").JSONValue;
+              previews.setSnapshots([...previews.snapshots, { stepIndex: nextStep, before: beforeVal, after: afterVal }]);
+              previews.setStepIndex(nextStep);
+              previews.setAutoJump(true);
+            }).catch(() => {});
           } catch {}
         }}
       />

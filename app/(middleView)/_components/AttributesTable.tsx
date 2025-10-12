@@ -40,8 +40,8 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.key} className="border-t align-top">
+          {rows.map((r, i) => (
+            <tr key={`${r.key}-${i}`} className="border-t align-top">
               <th scope="row" className="py-1 pr-2 text-left text-foreground/90 font-medium whitespace-nowrap align-middle">{r.key}</th>
               <td className="py-1 text-left text-foreground/80 break-words align-middle">{r.value}</td>
               {actions && (actions.onRemove || actions.onMask) ? (

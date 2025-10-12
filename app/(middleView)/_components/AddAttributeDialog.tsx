@@ -12,7 +12,15 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   targetTitle: string; // e.g., "Resource" or "Scope: name@version"
-  onSubmit: (key: string, value: string) => void;
+  onSubmit: (payload: {
+    key: string;
+    mode: "literal" | "substring";
+    value?: string; // for literal
+    literalType?: "string" | "number" | "boolean";
+    sourceAttr?: string; // for substring
+    substringStart?: number;
+    substringEnd?: number | null;
+  }) => void;
 };
 
 export default function AddAttributeDialog({ open, onOpenChange, targetTitle, onSubmit }: Props) {
@@ -38,6 +46,21 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
 
   const canSave = keyName.trim().length > 0;
 
+  function handleSave() {
+    const payload =
+      mode === "literal"
+        ? { key: keyName, mode, value, literalType }
+        : {
+            key: keyName,
+            mode,
+            sourceAttr,
+            substringStart: Number(substringStart || 0),
+            substringEnd: substringEnd ? Number(substringEnd) : null,
+          };
+    onSubmit(payload);
+    onOpenChange(false);
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -45,7 +68,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
           <DialogTitle>Add attribute to {targetTitle}</DialogTitle>
           <DialogDescription>Provide an attribute key and value to add.</DialogDescription>
         </DialogHeader>
-        <section className="space-y-4">
+        <form id="add-attr-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (canSave) handleSave(); }}>
           <section>
             <Label htmlFor="add-attr-key">Attribute key</Label>
             <Input id="add-attr-key" className="mt-1" value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="e.g. service.env" />
@@ -85,24 +108,10 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
               </section>
             )}
           </section>
-        </section>
+        </form>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            type="button"
-            disabled={!canSave}
-            onClick={() => {
-              let finalValue = value;
-              if (mode === "literal") {
-                if (literalType === "number") finalValue = String(Number(value));
-                if (literalType === "boolean") finalValue = value === "true" ? "true" : "false";
-              } else {
-                finalValue = `substring(${sourceAttr}, ${substringStart}${substringEnd ? ", " + substringEnd : ""})`;
-              }
-              onSubmit(keyName, finalValue);
-              onOpenChange(false);
-            }}
-          >
+          <Button type="submit" form="add-attr-form" disabled={!canSave}>
             Save
           </Button>
         </DialogFooter>

@@ -80,7 +80,7 @@ export default function RightPanel() {
                 <Redo2 className="size-4" />
               </Button>
               <Select value={String(stepIndex)} onValueChange={(v) => setStepIndex(Number(v))}>
-                <SelectTrigger className="min-w-[220px]">
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select step" />
                 </SelectTrigger>
                 <SelectContent>
