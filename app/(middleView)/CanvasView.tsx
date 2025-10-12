@@ -239,6 +239,43 @@ export default function CanvasView() {
               previews.setStepIndex(nextStep);
               previews.setAutoJump(true);
             }).catch(() => {});
+
+            // Also append an OTTL equivalent to the Raw OTTL editor for visibility
+            import("../../lib/stores/ottlStore").then((mod) => {
+              const { text, setText } = mod.useOttlStore.getState() as { text: string; setText: (t: string)=>void };
+
+              const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+              const valueExpr = (() => {
+                if (payload.mode === "literal") {
+                  if (payload.literalType === "number") return String(Number(payload.value ?? 0));
+                  if (payload.literalType === "boolean") return (payload.value ?? "").toLowerCase() === "true" ? "true" : "false";
+                  return quote(String(payload.value ?? ""));
+                }
+                const start = payload.substringStart ?? 0;
+                const end = payload.substringEnd != null ? `, ${payload.substringEnd}` : "";
+                return `Substring(attributes[${quote(String(payload.sourceAttr ?? ""))}], ${start}${end})`;
+              })();
+
+              const pathExpr = (() => {
+                if (signal === "traces") {
+                  if (addTarget!.path.kind === "resource") return `resource.attributes[${quote(payload.key)}]`;
+                  if (addTarget!.path.kind === "span") return `span.attributes[${quote(payload.key)}]`;
+                  return `scope.attributes[${quote(payload.key)}]`;
+                }
+                if (signal === "logs") {
+                  if (addTarget!.path.kind === "resource") return `resource.attributes[${quote(payload.key)}]`;
+                  return `attributes[${quote(payload.key)}]`;
+                }
+                // metrics
+                if (addTarget!.path.kind === "resource" || addTarget!.path.kind === "scope") return `${addTarget!.path.kind === "resource" ? "resource" : "scope"}.attributes[${quote(payload.key)}]`;
+                return `attributes[${quote(payload.key)}]`;
+              })();
+
+              const stmt = `set(${pathExpr}, ${valueExpr})`;
+              const header = `# auto: ${signal} ${addTarget!.path.kind}`;
+              const next = [text, header, stmt].filter(Boolean).join("\n").trim();
+              setText(next);
+            }).catch(() => {});
           } catch {}
         }}
       />
