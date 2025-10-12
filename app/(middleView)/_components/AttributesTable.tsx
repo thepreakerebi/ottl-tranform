@@ -4,6 +4,7 @@ import { Label } from "../../../components/ui/label";
 import { Button } from "../../../components/ui/button";
 import ActionMenu from "./ActionMenu";
 import EditAttributeDialog from "./EditAttributeDialog";
+import MaskAttributeDialog from "./MaskAttributeDialog";
 import { useState } from "react";
 import { useTelemetryStore } from "../../../lib/stores/telemetryStore";
 import { usePreviewStore } from "../../../lib/stores/previewStore";
@@ -27,6 +28,8 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
   const rows = normalizeAttributes(attributes);
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState<{ key: string; value: string } | null>(null);
+  const [maskOpen, setMaskOpen] = useState(false);
+  const [maskRow, setMaskRow] = useState<{ key: string; value: string } | null>(null);
   if (rows.length === 0) return null;
   return (
     <section aria-label={title} className="mt-3">
@@ -55,7 +58,7 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
                 <td className="py-1 text-center whitespace-nowrap align-middle">
                   <ActionMenu
                     onEdit={() => { setEditRow(r); setEditOpen(true); }}
-                    onMask={actions.onMask ? () => actions.onMask?.(r.key) : undefined}
+                    onMask={() => { setMaskRow(r); setMaskOpen(true); }}
                     onRemove={actions.onRemove ? () => actions.onRemove?.(r.key) : undefined}
                   />
                 </td>
@@ -120,6 +123,58 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
               ottl.setText(nextText);
               ottl.setLastCompiled(nextText);
             } catch {}
+          } catch {}
+        }}
+      />
+      <MaskAttributeDialog
+        open={maskOpen}
+        onOpenChange={setMaskOpen}
+        attributeKey={maskRow?.key ?? ""}
+        currentValue={maskRow?.value ?? ""}
+        onSubmit={(start, end, maskChar = "*") => {
+          try {
+            const tele = useTelemetryStore.getState();
+            const beforeClone = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+            const telemetryCopy = tele.parsed ? JSON.parse(JSON.stringify(tele.parsed)) : null;
+            const applyMask = (v: string) => {
+              const s = Math.max(0, start);
+              const e = end == null ? v.length : Math.max(s, end);
+              const maskLen = Math.max(0, e - s);
+              const masked = maskLen > 0 ? maskChar.repeat(maskLen) : maskChar;
+              return v.slice(0, s) + masked + v.slice(e);
+            };
+            const updateMask = (obj: unknown, targetKey: string) => {
+              if (!obj || typeof obj !== "object") return;
+              const rec = obj as Record<string, unknown>;
+              const maybeAttrs = rec as { attributes?: Array<{ key?: string; value?: Record<string, unknown> }> };
+              if (Array.isArray(maybeAttrs.attributes)) {
+                const idx = maybeAttrs.attributes.findIndex((kv) => (typeof kv?.key === "string") && kv.key === targetKey);
+                if (idx >= 0) {
+                  const cur = maybeAttrs.attributes[idx]?.value?.stringValue as string | undefined;
+                  const next = applyMask(String(cur ?? ""));
+                  maybeAttrs.attributes[idx] = { key: targetKey, value: { stringValue: next } } as unknown as { key?: string; value?: Record<string, unknown> };
+                }
+              }
+              for (const val of Object.values(rec)) if (val && typeof val === "object") updateMask(val, targetKey);
+            };
+            if (telemetryCopy && maskRow?.key) updateMask(telemetryCopy, maskRow.key);
+            const afterClone = telemetryCopy;
+            tele.setParsed(afterClone);
+            const previews = usePreviewStore.getState();
+            const nextStep = previews.snapshots.length;
+            previews.setSnapshots([...previews.snapshots, { stepIndex: nextStep, before: beforeClone, after: afterClone }]);
+            previews.setStepIndex(nextStep);
+            previews.setAutoJump(true);
+
+            const ottl = useOttlStore.getState();
+            const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+            const maskExpr = end == null
+              ? `Concat([Substring(attributes[${quote(maskRow?.key ?? "")}], 0, ${start}), Repeat(${quote(maskChar)}, Len(attributes[${quote(maskRow?.key ?? "")}]) - ${start}), ""], "")`
+              : `Concat([Substring(attributes[${quote(maskRow?.key ?? "")}], 0, ${start}), Repeat(${quote(maskChar)}, ${end} - ${start}), Substring(attributes[${quote(maskRow?.key ?? "")}], ${end})], "")`;
+            const stmt = `set(attributes[${quote(maskRow?.key ?? "")}], ${maskExpr})`;
+            const nextText = [ottl.text, `# auto: mask attribute`, stmt].filter(Boolean).join("\n").trim();
+            ottl.setText(nextText);
+            ottl.setLastCompiled(nextText);
           } catch {}
         }}
       />
