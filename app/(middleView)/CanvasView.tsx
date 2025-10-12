@@ -72,32 +72,47 @@ export default function CanvasView() {
                 const sv = kv?.value?.stringValue as string | undefined;
                 return sv ?? "";
               };
-              const currentTarget = addTarget!;
-              const kind = currentTarget.path.kind;
-              const idx = currentTarget.path.indexPath ?? [];
+              // Cross-context lookup: try resource, then scope, then entity-level attributes
               let source = "";
               if (signal === "traces") {
-                const rss = asArray<ResourceSpansView>((parsed as unknown as TracesDocView)?.resourceSpans);
+                const doc = parsed as unknown as TracesDocView;
+                const rss = asArray<ResourceSpansView>(doc.resourceSpans);
                 const rs0 = rss[0];
-                if (kind === "resource") source = readAttr((rs0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
-                else if (kind === "scope") source = readAttr((rs0 as unknown as { scopeSpans?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeSpans?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
-                else if (kind === "span") source = readAttr((rs0 as unknown as { scopeSpans?: Array<{ spans?: Array<{ attributes?: AttributeKV[] }> }> }).scopeSpans?.[(idx.length===2?idx[0]:0)]?.spans?.[(idx.length===2?idx[1]:idx[0]??0)]?.attributes as unknown[] | undefined);
+                source = source || readAttr((rs0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                const scopeSpans = (rs0 as unknown as { scopeSpans?: ScopeSpansView[] }).scopeSpans ?? [];
+                for (const ss of scopeSpans) {
+                  source = source || readAttr((ss as unknown as { scope?: { attributes?: AttributeKV[] } }).scope?.attributes as unknown[] | undefined);
+                  const spans = (ss as unknown as { spans?: SpanView[] }).spans ?? [];
+                  for (const sp of spans) { if (source) break; source = source || readAttr(sp.attributes as unknown[] | undefined); }
+                  if (source) break;
+                }
               } else if (signal === "logs") {
-                const rls = asArray<ResourceLogsView>((parsed as unknown as LogsDocView)?.resourceLogs);
+                const doc = parsed as unknown as LogsDocView;
+                const rls = asArray<ResourceLogsView>(doc.resourceLogs);
                 const rl0 = rls[0];
-                if (kind === "resource") source = readAttr((rl0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
-                else if (kind === "scope") source = readAttr((rl0 as unknown as { scopeLogs?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeLogs?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
-                else if (kind === "log") source = readAttr((rl0 as unknown as { scopeLogs?: Array<{ logRecords?: Array<{ attributes?: AttributeKV[] }> }> }).scopeLogs?.[idx[0] ?? 0]?.logRecords?.[idx[1] ?? 0]?.attributes as unknown[] | undefined);
+                source = source || readAttr((rl0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                const scopeLogs = (rl0 as unknown as { scopeLogs?: ScopeLogsView[] }).scopeLogs ?? [];
+                for (const sl of scopeLogs) {
+                  source = source || readAttr((sl as unknown as { scope?: { attributes?: AttributeKV[] } }).scope?.attributes as unknown[] | undefined);
+                  const records = (sl as unknown as { logRecords?: LogRecordView[] }).logRecords ?? [];
+                  for (const lr of records) { if (source) break; source = source || readAttr(lr.attributes as unknown[] | undefined); }
+                  if (source) break;
+                }
               } else if (signal === "metrics") {
-                const rms = asArray<ResourceMetricsView>((parsed as unknown as MetricsDocView)?.resourceMetrics);
+                const doc = parsed as unknown as MetricsDocView;
+                const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
                 const rm0 = rms[0];
-                if (kind === "resource") source = readAttr((rm0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
-                else if (kind === "scope") source = readAttr((rm0 as unknown as { scopeMetrics?: Array<{ scope?: { attributes?: AttributeKV[] } }> }).scopeMetrics?.[idx[0] ?? 0]?.scope?.attributes as unknown[] | undefined);
-                else if (kind === "datapoint") {
-                  const sm = (rm0 as unknown as { scopeMetrics?: Array<{ metrics?: MetricView[] }> }).scopeMetrics?.[idx[0] ?? 0];
-                  const metric = (sm as unknown as { metrics?: MetricView[] })?.metrics?.[idx[1] ?? 0];
-                  const dpsArr = metricDatapointsOf(metric as MetricView);
-                  source = readAttr(Array.isArray(dpsArr) ? (dpsArr[idx[2] ?? 0]?.attributes as unknown[] | undefined) : undefined);
+                source = source || readAttr((rm0 as unknown as { resource?: { attributes?: AttributeKV[] } }).resource?.attributes as unknown[] | undefined);
+                const scopeMetrics = (rm0 as unknown as { scopeMetrics?: ScopeMetricsView[] }).scopeMetrics ?? [];
+                for (const sm of scopeMetrics) {
+                  source = source || readAttr((sm as unknown as { scope?: { attributes?: AttributeKV[] } }).scope?.attributes as unknown[] | undefined);
+                  const metrics = (sm as unknown as { metrics?: MetricView[] }).metrics ?? [];
+                  for (const m of metrics) {
+                    if (source) break;
+                    const dps = metricDatapointsOf(m);
+                    for (const dp of dps) { if (source) break; source = source || readAttr(dp.attributes as unknown[] | undefined); }
+                  }
+                  if (source) break;
                 }
               }
               const slice = end == null ? source.slice(start) : source.slice(start, end);

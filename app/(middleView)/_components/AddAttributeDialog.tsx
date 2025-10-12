@@ -31,6 +31,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
   const [sourceAttr, setSourceAttr] = useState("");
   const [substringStart, setSubstringStart] = useState("0");
   const [substringEnd, setSubstringEnd] = useState("");
+  const [errors, setErrors] = useState<{ key?: string; value?: string; substring?: string }>({});
 
   useEffect(() => {
     if (open) {
@@ -47,6 +48,20 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
   const canSave = keyName.trim().length > 0;
 
   function handleSave() {
+    const nextErrors: { key?: string; value?: string; substring?: string } = {};
+    if (keyName.trim().length === 0) nextErrors.key = "Provide an attribute key";
+    if (mode === "literal") {
+      if (literalType === "number" && Number.isNaN(Number(value))) nextErrors.value = "Enter a valid number";
+      if (literalType === "boolean" && !["true", "false"].includes(value.toLowerCase())) nextErrors.value = "Enter true or false";
+    } else {
+      if (!sourceAttr.trim()) nextErrors.substring = "Provide a source attribute key";
+      const startNum = Number(substringStart || 0);
+      const endNum = substringEnd ? Number(substringEnd) : null;
+      if (Number.isNaN(startNum) || startNum < 0) nextErrors.substring = "Start must be a non-negative number";
+      if (endNum != null && (Number.isNaN(endNum) || endNum < startNum)) nextErrors.substring = "End must be >= start";
+    }
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     const payload =
       mode === "literal"
         ? { key: keyName, mode, value, literalType }
@@ -72,6 +87,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
           <section>
             <Label htmlFor="add-attr-key">Attribute key</Label>
             <Input id="add-attr-key" className="mt-1" value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="e.g. service.env" />
+            {errors.key && <p className="text-xs text-red-600 mt-1" role="alert">{errors.key}</p>}
           </section>
           <section className="space-y-2">
             <Label>Attribute value</Label>
@@ -96,6 +112,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
                   </SelectContent>
                 </Select>
                 <Input className="flex-1 min-w-0" value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. prod" />
+                {errors.value && <p className="text-xs text-red-600" role="alert">{errors.value}</p>}
               </section>
             )}
             {mode === "substring" && (
@@ -105,6 +122,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
                   <Input className="w-24" value={substringStart} onChange={(e) => setSubstringStart(e.target.value)} placeholder="start" />
                   <Input className="w-28" value={substringEnd} onChange={(e) => setSubstringEnd(e.target.value)} placeholder="end (optional)" />
                 </section>
+                {errors.substring && <p className="text-xs text-red-600" role="alert">{errors.substring}</p>}
               </section>
             )}
           </section>
