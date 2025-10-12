@@ -122,6 +122,25 @@ export default function CanvasView() {
             const finalString = computeValueFromContext();
             const vobj = { stringValue: finalString } as Record<string, unknown>;
             const kv = { key: payload.key, value: vobj } as { key: string; value: Record<string, unknown> };
+            type KV = { key: string; value: Record<string, unknown> };
+            const policy = payload.collision ?? "upsert";
+            const insertWithPolicy = (arr: KV[] | undefined): KV[] => {
+              const list = Array.isArray(arr) ? arr as KV[] : [];
+              // If an identical key/value pair exists, do nothing
+              if (list.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) return list;
+              const existingIndex = list.findIndex((a) => a.key === kv.key);
+              if (policy === "upsert") {
+                if (existingIndex >= 0) {
+                  list[existingIndex] = kv;
+                  return list;
+                }
+                list.push(kv);
+                return list;
+              }
+              // skip and onlyIfMissing behave the same: insert only when key is missing
+              if (existingIndex === -1) list.push(kv);
+              return list;
+            };
             const cloned = parsed ? (JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>) : undefined;
             if (!cloned) return;
 
@@ -137,19 +156,15 @@ export default function CanvasView() {
               const rs0 = asRec(rss[0]);
               if (kind === "resource") {
                 const res = asRec(rs0?.["resource"]);
-                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = resObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                resObj.attributes = arr;
+                const resObj = res as unknown as { attributes?: KV[] };
+                resObj.attributes = insertWithPolicy(resObj.attributes);
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeSpans = asArr(rs0?.["scopeSpans"]);
                 const ss = asRec(scopeSpans[i]);
                 const scope = asRec(ss?.["scope"]);
-                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = scObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                scObj.attributes = arr;
+                const scObj = scope as unknown as { attributes?: KV[] };
+                scObj.attributes = insertWithPolicy(scObj.attributes);
               } else if (kind === "span") {
                 // indexPath: [scopeIndex?, spanIndex]
                 const scopeIndex = idx.length === 2 ? idx[0] : 0;
@@ -158,58 +173,46 @@ export default function CanvasView() {
                 const ss = asRec(scopeSpans[scopeIndex]);
                 const spans = asArr(ss?.["spans"]);
                 const sp = asRec(spans[spanIndex]);
-                const spObj = sp as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = spObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                spObj.attributes = arr;
+                const spObj = sp as unknown as { attributes?: KV[] };
+                spObj.attributes = insertWithPolicy(spObj.attributes);
               }
             } else if (signal === "logs") {
               const rls = asArr(cloned["resourceLogs"]);
               const rl0 = asRec(rls[0]);
               if (kind === "resource") {
                 const res = asRec(rl0?.["resource"]);
-                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = resObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                resObj.attributes = arr;
+                const resObj = res as unknown as { attributes?: KV[] };
+                resObj.attributes = insertWithPolicy(resObj.attributes);
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeLogs = asArr(rl0?.["scopeLogs"]);
                 const sl = asRec(scopeLogs[i]);
                 const scope = asRec(sl?.["scope"]);
-                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = scObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                scObj.attributes = arr;
+                const scObj = scope as unknown as { attributes?: KV[] };
+                scObj.attributes = insertWithPolicy(scObj.attributes);
               } else if (kind === "log") {
                 const i = idx[0] ?? 0; const j = idx[1] ?? 0;
                 const scopeLogs = asArr(rl0?.["scopeLogs"]);
                 const sl = asRec(scopeLogs[i]);
                 const logRecords = asArr(sl?.["logRecords"]);
                 const lr = asRec(logRecords[j]);
-                const lrObj = lr as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = lrObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                lrObj.attributes = arr;
+                const lrObj = lr as unknown as { attributes?: KV[] };
+                lrObj.attributes = insertWithPolicy(lrObj.attributes);
               }
             } else if (signal === "metrics") {
               const rms = asArr(cloned["resourceMetrics"]);
               const rm0 = asRec(rms[0]);
               if (kind === "resource") {
                 const res = asRec(rm0?.["resource"]);
-                const resObj = res as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = resObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                resObj.attributes = arr;
+                const resObj = res as unknown as { attributes?: KV[] };
+                resObj.attributes = insertWithPolicy(resObj.attributes);
               } else if (kind === "scope") {
                 const i = idx[0] ?? 0;
                 const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
                 const sm = asRec(scopeMetrics[i]);
                 const scope = asRec(sm?.["scope"]);
-                const scObj = scope as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = scObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                scObj.attributes = arr;
+                const scObj = scope as unknown as { attributes?: KV[] };
+                scObj.attributes = insertWithPolicy(scObj.attributes);
               } else if (kind === "datapoint") {
                 const i = idx[0] ?? 0; const mi = idx[1] ?? 0; const di = idx[2] ?? 0;
                 const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
@@ -221,10 +224,8 @@ export default function CanvasView() {
                 const histogram = asRec(metric?.["histogram"]);
                 const dps = asArr(sum?.["dataPoints"] ?? gauge?.["dataPoints"] ?? histogram?.["dataPoints"]);
                 const dp = asRec(dps[di]);
-                const dpObj = dp as unknown as { attributes?: Array<{ key: string; value: Record<string, unknown> }> };
-                const arr = dpObj.attributes ?? [];
-                if (!arr.some((a) => a.key === kv.key && JSON.stringify(a.value) === JSON.stringify(kv.value))) arr.push(kv);
-                dpObj.attributes = arr;
+                const dpObj = dp as unknown as { attributes?: KV[] };
+                dpObj.attributes = insertWithPolicy(dpObj.attributes);
               }
             }
             setParsed(cloned as unknown as import("../../lib/ottl/types").JSONValue);

@@ -20,6 +20,7 @@ type Props = {
     sourceAttr?: string; // for substring
     substringStart?: number;
     substringEnd?: number | null;
+    collision?: "upsert" | "skip" | "onlyIfMissing";
   }) => void;
 };
 
@@ -32,6 +33,7 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
   const [substringStart, setSubstringStart] = useState("0");
   const [substringEnd, setSubstringEnd] = useState("");
   const [errors, setErrors] = useState<{ key?: string; value?: string; substring?: string }>({});
+  const [collision, setCollision] = useState<"upsert" | "skip" | "onlyIfMissing">("upsert");
 
   useEffect(() => {
     if (open) {
@@ -64,13 +66,14 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
     if (Object.keys(nextErrors).length > 0) return;
     const payload =
       mode === "literal"
-        ? { key: keyName, mode, value, literalType }
+        ? { key: keyName, mode, value, literalType, collision }
         : {
             key: keyName,
             mode,
             sourceAttr,
             substringStart: Number(substringStart || 0),
             substringEnd: substringEnd ? Number(substringEnd) : null,
+            collision,
           };
     onSubmit(payload);
     onOpenChange(false);
@@ -133,6 +136,18 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
             Save
           </Button>
         </DialogFooter>
+        {/* Collision policy field */}
+        <section className="mt-4 space-y-2">
+          <Label htmlFor="dlg-collision">If key exists</Label>
+          <Select value={collision} onValueChange={(v) => setCollision(v as "upsert" | "skip" | "onlyIfMissing")}>
+            <SelectTrigger id="dlg-collision" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="upsert">Upsert (replace existing)</SelectItem>
+              <SelectItem value="skip">Skip</SelectItem>
+              <SelectItem value="onlyIfMissing">Only if missing</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
       </DialogContent>
     </Dialog>
   );
