@@ -42,7 +42,7 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
         <tbody>
           {rows.map((r, i) => (
             <tr key={`${r.key}-${i}`} className="border-t align-top">
-              <th scope="row" className="py-1 pr-2 text-left text-foreground/90 font-medium whitespace-nowrap align-middle">{r.key}</th>
+              <th scope="row" data-attr-key={r.key} className="py-1 pr-2 text-left text-foreground/90 font-medium whitespace-nowrap align-middle">{r.key}</th>
               <td className="py-1 text-left text-foreground/80 break-words align-middle">{r.value}</td>
               {actions && (actions.onRemove || actions.onMask) ? (
                 <td className="py-1 text-center whitespace-nowrap align-middle">
