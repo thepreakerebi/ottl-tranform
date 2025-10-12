@@ -3,6 +3,8 @@
 import { Label } from "../../../components/ui/label";
 import { Button } from "../../../components/ui/button";
 import ActionMenu from "./ActionMenu";
+import EditAttributeDialog from "./EditAttributeDialog";
+import { useState } from "react";
 
 type AttributeKV = { key: string; value: Record<string, unknown> };
 
@@ -20,6 +22,8 @@ type Props = {
 
 export default function AttributesTable({ title = "Attributes", attributes, actions, onAddAttribute }: Props) {
   const rows = normalizeAttributes(attributes);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<{ key: string; value: string } | null>(null);
   if (rows.length === 0) return null;
   return (
     <section aria-label={title} className="mt-3">
@@ -47,7 +51,7 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
               {actions && (actions.onRemove || actions.onMask) ? (
                 <td className="py-1 text-center whitespace-nowrap align-middle">
                   <ActionMenu
-                    onEdit={() => { /* future: open edit key/value flow */ }}
+                    onEdit={() => { setEditRow(r); setEditOpen(true); }}
                     onMask={actions.onMask ? () => actions.onMask?.(r.key) : undefined}
                     onRemove={actions.onRemove ? () => actions.onRemove?.(r.key) : undefined}
                   />
@@ -57,6 +61,22 @@ export default function AttributesTable({ title = "Attributes", attributes, acti
           ))}
         </tbody>
       </table>
+      <EditAttributeDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        initialKey={editRow?.key ?? ""}
+        initialValue={editRow?.value ?? ""}
+        onSubmit={(nextKey, nextValue) => {
+          // optimistic: replace in provided attributes array if possible
+          try {
+            const list = Array.isArray(attributes) ? (attributes as Array<{ key: string; value: Record<string, unknown> }>) : [];
+            const idx = list.findIndex((kv) => kv.key === editRow?.key);
+            if (idx >= 0) {
+              list[idx] = { key: nextKey, value: { stringValue: nextValue } } as unknown as AttributeKV;
+            }
+          } catch {}
+        }}
+      />
     </section>
   );
 }
