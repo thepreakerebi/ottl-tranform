@@ -184,11 +184,11 @@ export default function RightPanel() {
               </section>
               {/* <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span> */}
             </div>
-            {/* After section - takes half the remaining height */}
+            {/* Diff view - GitHub style */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
-              <div className="p-4">
+              <div className="">
                 <TooltipProvider>
-                  {renderHighlighted(afterStr, diffHighlights)}
+                  {renderGitHubStyleDiff(pretty(current?.before || null), afterStr, diffHighlights)}
                 </TooltipProvider>
               </div>
             </div>
@@ -286,4 +286,96 @@ function clusterHighlights(highlights: Set<number>): number[] {
     prev = idx;
   }
   return clusters;
+}
+
+function renderGitHubStyleDiff(beforeText: string, afterText: string, highlights: { added: Set<number>; removed: Set<number>; removedMap?: Map<number, string> }) {
+  const beforeLines = beforeText.split("\n");
+  const afterLines = afterText.split("\n");
+  
+  // Create a unified diff representation
+  const diffLines: Array<{
+    type: 'context' | 'added' | 'removed';
+    content: string;
+    beforeLineNum?: number;
+    afterLineNum?: number;
+    lineIndex: number;
+  }> = [];
+  
+  afterLines.forEach((line, i) => {
+    const isAdded = highlights.added.has(i);
+    const isRemoved = highlights.removed.has(i);
+    const removedContent = highlights.removedMap?.get(i);
+    
+    // Add removed line first if it exists
+    if (isRemoved && removedContent) {
+      diffLines.push({
+        type: 'removed',
+        content: removedContent,
+        beforeLineNum: i + 1,
+        lineIndex: i
+      });
+    }
+    
+    // Add current line
+    diffLines.push({
+      type: isAdded ? 'added' : (isRemoved ? 'removed' : 'context'),
+      content: line,
+      beforeLineNum: isAdded ? undefined : i + 1,
+      afterLineNum: isRemoved ? undefined : i + 1,
+      lineIndex: i
+    });
+  });
+  
+  return (
+    <div className="font-mono text-xs">
+      {/* File header */}
+      <div className="bg-muted/50 px-3 py-2 border-b text-xs font-medium text-muted-foreground flex items-center justify-between">
+        <span>Transformation diff</span>
+        <span className="text-xs text-muted-foreground">
+          {highlights.added.size > 0 && (
+            <span className="text-green-600">+{highlights.added.size}</span>
+          )}
+          {highlights.added.size > 0 && highlights.removed.size > 0 && " "}
+          {highlights.removed.size > 0 && (
+            <span className="text-red-600">-{highlights.removed.size}</span>
+          )}
+        </span>
+      </div>
+      
+      {/* Unified diff view */}
+      <div className="">
+        {diffLines.map((diffLine, index) => (
+          <div key={index} className="flex hover:bg-muted/30 transition-colors">
+            {/* Line numbers */}
+            <div className="flex">
+              <div className="w-12 px-2 py-1 text-center text-xs text-muted-foreground bg-muted/20 border-r select-none">
+                {diffLine.beforeLineNum || ""}
+              </div>
+              <div className="w-12 px-2 py-1 text-center text-xs text-muted-foreground bg-muted/20 border-r select-none">
+                {diffLine.afterLineNum || ""}
+              </div>
+            </div>
+            
+            {/* Diff indicator */}
+            <div className={`w-8 px-2 py-1 text-center text-xs select-none border-r ${
+              diffLine.type === 'added' ? "bg-green-50 text-green-600" : 
+              diffLine.type === 'removed' ? "bg-red-50 text-red-600" : 
+              "bg-gray-50 text-gray-500"
+            }`}>
+              {diffLine.type === 'added' ? "+" : diffLine.type === 'removed' ? "-" : " "}
+            </div>
+            
+            {/* Content */}
+            <div className={`flex-1 px-3 py-1 whitespace-pre ${
+              diffLine.type === 'added' ? "bg-green-50" : 
+              diffLine.type === 'removed' ? "bg-red-50" : 
+              "bg-white"
+            }`} data-line={diffLine.lineIndex}>
+              {diffLine.content || "\u00A0"}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
