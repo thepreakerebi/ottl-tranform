@@ -31,6 +31,7 @@ type MetricsDocView = { resourceMetrics?: ResourceMetricsView[] };
 
 export default function CanvasView() {
   const parsed = useTelemetryStore((s) => s.parsed);
+  const setParsed = useTelemetryStore((s) => s.setParsed);
   const signal = useTelemetryStore((s) => s.signal);
 
   // Logs view mode: grouped by scope (default) or flat list
@@ -54,9 +55,98 @@ export default function CanvasView() {
         onOpenChange={setAddOpen}
         targetTitle={addTarget?.title ?? ""}
         onSubmit={(key, value) => {
-          // Placeholder: immediate mutation for preview-only (no persistence here)
-          // In a full implementation, dispatch a transform to the worker/history
-          console.log("Add attribute", key, value, addTarget);
+          try {
+            if (!addTarget) return;
+            const vobj = { stringValue: String(value) } as Record<string, unknown>;
+            const kv = { key, value: vobj } as unknown;
+            const cloned = parsed ? (JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>) : undefined;
+            if (!cloned) return;
+
+            const asRec = (v: unknown): Record<string, unknown> | undefined => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+            const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+            const kind = addTarget.path.kind;
+            const idx = addTarget.path.indexPath ?? [];
+
+            if (signal === "traces") {
+              const rss = asArr(cloned["resourceSpans"]);
+              const rs0 = asRec(rss[0]);
+              if (kind === "resource") {
+                const res = asRec(rs0?.["resource"]);
+                const resObj = res as unknown as { attributes?: unknown[] };
+                resObj.attributes = [...(resObj.attributes ?? []), kv];
+              } else if (kind === "scope") {
+                const i = idx[0] ?? 0;
+                const scopeSpans = asArr(rs0?.["scopeSpans"]);
+                const ss = asRec(scopeSpans[i]);
+                const scope = asRec(ss?.["scope"]);
+                const scObj = scope as unknown as { attributes?: unknown[] };
+                scObj.attributes = [...(scObj.attributes ?? []), kv];
+              } else if (kind === "span") {
+                // indexPath: [scopeIndex?, spanIndex]
+                const scopeIndex = idx.length === 2 ? idx[0] : 0;
+                const spanIndex = idx.length === 2 ? idx[1] : idx[0] ?? 0;
+                const scopeSpans = asArr(rs0?.["scopeSpans"]);
+                const ss = asRec(scopeSpans[scopeIndex]);
+                const spans = asArr(ss?.["spans"]);
+                const sp = asRec(spans[spanIndex]);
+                const spObj = sp as unknown as { attributes?: unknown[] };
+                spObj.attributes = [...(spObj.attributes ?? []), kv];
+              }
+            } else if (signal === "logs") {
+              const rls = asArr(cloned["resourceLogs"]);
+              const rl0 = asRec(rls[0]);
+              if (kind === "resource") {
+                const res = asRec(rl0?.["resource"]);
+                const resObj = res as unknown as { attributes?: unknown[] };
+                resObj.attributes = [...(resObj.attributes ?? []), kv];
+              } else if (kind === "scope") {
+                const i = idx[0] ?? 0;
+                const scopeLogs = asArr(rl0?.["scopeLogs"]);
+                const sl = asRec(scopeLogs[i]);
+                const scope = asRec(sl?.["scope"]);
+                const scObj = scope as unknown as { attributes?: unknown[] };
+                scObj.attributes = [...(scObj.attributes ?? []), kv];
+              } else if (kind === "log") {
+                const i = idx[0] ?? 0; const j = idx[1] ?? 0;
+                const scopeLogs = asArr(rl0?.["scopeLogs"]);
+                const sl = asRec(scopeLogs[i]);
+                const logRecords = asArr(sl?.["logRecords"]);
+                const lr = asRec(logRecords[j]);
+                const lrObj = lr as unknown as { attributes?: unknown[] };
+                lrObj.attributes = [...(lrObj.attributes ?? []), kv];
+              }
+            } else if (signal === "metrics") {
+              const rms = asArr(cloned["resourceMetrics"]);
+              const rm0 = asRec(rms[0]);
+              if (kind === "resource") {
+                const res = asRec(rm0?.["resource"]);
+                const resObj = res as unknown as { attributes?: unknown[] };
+                resObj.attributes = [...(resObj.attributes ?? []), kv];
+              } else if (kind === "scope") {
+                const i = idx[0] ?? 0;
+                const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
+                const sm = asRec(scopeMetrics[i]);
+                const scope = asRec(sm?.["scope"]);
+                const scObj = scope as unknown as { attributes?: unknown[] };
+                scObj.attributes = [...(scObj.attributes ?? []), kv];
+              } else if (kind === "datapoint") {
+                const i = idx[0] ?? 0; const mi = idx[1] ?? 0; const di = idx[2] ?? 0;
+                const scopeMetrics = asArr(rm0?.["scopeMetrics"]);
+                const sm = asRec(scopeMetrics[i]);
+                const metrics = asArr(sm?.["metrics"]);
+                const metric = asRec(metrics[mi]);
+                const sum = asRec(metric?.["sum"]);
+                const gauge = asRec(metric?.["gauge"]);
+                const histogram = asRec(metric?.["histogram"]);
+                const dps = asArr(sum?.["dataPoints"] ?? gauge?.["dataPoints"] ?? histogram?.["dataPoints"]);
+                const dp = asRec(dps[di]);
+                const dpObj = dp as unknown as { attributes?: unknown[] };
+                dpObj.attributes = [...(dpObj.attributes ?? []), kv];
+              }
+            }
+            setParsed(cloned as unknown as import("../../lib/ottl/types").JSONValue);
+          } catch {}
         }}
       />
     </section>
@@ -114,7 +204,7 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
                 {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
                   <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
                 )}
-                {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans)}
+                {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans, opts.openAdd, i)}
               </Collapsible>
             ))}
           </section>
@@ -124,21 +214,25 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
   } else {
     // Flat list of spans across scopes
     const spansAll = scopeSpansAll.flatMap((ss) => asArray<SpanView>(ss.spans));
-    const spansElement = renderSpans(spansAll);
+    const spansElement = renderSpans(spansAll, opts.openAdd);
     if (spansElement) sections.push(<section key="spans">{spansElement}</section>);
   }
 
   return <section className="space-y-3">{sections}</section>;
 }
 
-function renderSpans(spans: SpanView[]) {
+function renderSpans(spans: SpanView[], openAdd?: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void, scopeIndex?: number) {
   if (!spans.length) return null;
   return (
     <Collapsible title="Spans" defaultOpen>
       <section className="space-y-3">
         {spans.map((sp, idx) => (
           <Collapsible key={sp.spanId ?? `${sp.name ?? "span"}-${idx}`} title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined}>
-            <AttributesTable attributes={sp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+            <AttributesTable
+              attributes={sp.attributes}
+              actions={{ onRemove: () => {}, onMask: () => {} }}
+              onAddAttribute={openAdd ? () => openAdd(sp.name ? `Span: ${sp.name}` : `Span ${idx + 1}`, { kind: "span", indexPath: scopeIndex != null ? [scopeIndex, idx] : [idx] }) : undefined}
+            />
             {renderSpanEvents(sp as unknown as { events?: Array<{ attributes?: AttributeKV[] }> })}
             {renderSpanLinks(sp as unknown as { links?: Array<{ attributes?: AttributeKV[] }> })}
           </Collapsible>
@@ -270,7 +364,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
 
 // (helper removed; inline rendering used in renderLogs)
 
-function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
+function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void; openAdd: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void }) {
   const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
   if (rms.length === 0) return <p className="text-sm text-muted-foreground">No metric content.</p>;
 
@@ -282,7 +376,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
       <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
       </Collapsible>
     );
   }
@@ -311,7 +405,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
           return (
             <Collapsible key={`metric-scope-${i}`} title={`Scope: ${label}`} defaultOpen>
               {hasScopeAttrs && (
-                <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
               )}
               {hasMetrics && (
                 <section className="space-y-3">
@@ -323,7 +417,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
                         title={`Datapoint ${di + 1}`}
                         subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}
                       >
-                        <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                        <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${di + 1}`, { kind: "datapoint", indexPath: [i, mi, di] })} />
                       </Collapsible>
                     ));
                   })}
@@ -352,7 +446,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
             <section className="space-y-3">
               {allDps.map(({ metric, scopeLabel, dp, idx }) => (
                 <Collapsible key={`dp-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
-                  <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                  <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${idx}`, { kind: "datapoint", indexPath: [idx] })} />
                 </Collapsible>
               ))}
             </section>
