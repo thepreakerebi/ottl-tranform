@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import AttributesTable from "./_components/AttributesTable";
@@ -32,7 +32,10 @@ export default function CanvasView() {
   const parsed = useTelemetryStore((s) => s.parsed);
   const signal = useTelemetryStore((s) => s.signal);
 
-  const content = useMemo(() => renderBySignal(parsed, signal), [parsed, signal]);
+  // Logs view mode: grouped by scope (default) or flat list
+  const [logsView, setLogsView] = useState<"grouped" | "flat">("grouped");
+
+  const content = useMemo(() => renderBySignal(parsed, signal, { logsView, setLogsView }), [parsed, signal, logsView]);
 
   return (
     <section aria-label="Canvas" className="h-full overflow-y-auto overflow-x-hidden p-4">
@@ -41,12 +44,16 @@ export default function CanvasView() {
   );
 }
 
-function renderBySignal(parsed: unknown, signal: string) {
+function renderBySignal(
+  parsed: unknown,
+  signal: string,
+  opts?: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }
+) {
   if (!parsed) {
     return <p className="text-sm text-muted-foreground">Paste telemetry data to begin.</p>;
   }
   if (signal === "traces") return renderTraces(parsed as TracesDocView);
-  if (signal === "logs") return renderLogs(parsed as LogsDocView);
+  if (signal === "logs") return renderLogs(parsed as LogsDocView, opts!);
   if (signal === "metrics") return renderMetrics(parsed as MetricsDocView);
   return <p className="text-sm text-muted-foreground">Unsupported telemetry format.</p>;
 }
@@ -138,7 +145,7 @@ function renderSpanLinks(sp: { links?: Array<{ attributes?: AttributeKV[] }> }) 
   );
 }
 
-function renderLogs(doc: LogsDocView) {
+function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
   const rls = asArray<ResourceLogsView>(doc.resourceLogs);
   if (rls.length === 0) return <p className="text-sm text-muted-foreground">No log content.</p>;
 
@@ -154,21 +161,75 @@ function renderLogs(doc: LogsDocView) {
     );
   }
 
-  // Log records (no scope header unless scope has attributes, per spec we show records directly)
-  const allRecords = rls.flatMap((rl) => asArray<ScopeLogsView>(rl.scopeLogs)).flatMap((sl) => asArray<LogRecordView>(sl.logRecords));
-  const recordsWithAttrs = allRecords.filter((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0);
-  if (recordsWithAttrs.length > 0) {
+  // View switcher (grouped vs flat)
+  sections.push(
+    <section key="logs-view" className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">View:</span>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "grouped" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("grouped")}>Grouped</button>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "flat" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("flat")}>Flat</button>
+    </section>
+  );
+
+  const scopeLogsAll = rls.flatMap((rl) => asArray<ScopeLogsView>(rl.scopeLogs));
+
+  if (opts.logsView === "grouped") {
+    // Group by scope, show scope header (name@version) and records under it; attributes shown if present
     sections.push(
-      <Collapsible key="records" title="Log records" defaultOpen>
-          <section className="space-y-3">
-          {recordsWithAttrs.map((lr, i) => (
-            <Collapsible key={keyForLog(lr)} title={lr.severityText ?? `Record ${i + 1}`} subtitle={lr.timeUnixNano}>
-              <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+      <section key="grouped" className="space-y-3">
+        {scopeLogsAll.map((sl, i) => {
+          const sc = (sl as unknown as { scope?: { name?: string; version?: string; attributes?: AttributeKV[] } }).scope;
+          const label = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || `Scope ${i + 1}`;
+          const records = asArray<LogRecordView>(sl.logRecords);
+          const recordsWithAttrs = records.filter((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0);
+          if (!sc?.attributes?.length && recordsWithAttrs.length === 0) return null;
+          return (
+            <Collapsible key={`scope-block-${i}`} title={`Scope: ${label}`} defaultOpen>
+              {Array.isArray(sc?.attributes) && sc.attributes.length > 0 && (
+                <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+              )}
+              {recordsWithAttrs.length > 0 && (
+                <Collapsible title="Log records" defaultOpen>
+                  <section className="space-y-3">
+                    {recordsWithAttrs.map((lr, j) => (
+                      <Collapsible key={`rec-${i}-${j}-${keyForLog(lr)}`} title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
+                        <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                      </Collapsible>
+                    ))}
+                  </section>
+                </Collapsible>
+              )}
             </Collapsible>
+          );
+        })}
+      </section>
+    );
+  } else {
+    // Flat list of all records with scope label in subtitle
+    const scopeRecords: Array<{ scopeName?: string; record: LogRecordView }> = [];
+    for (const sl of scopeLogsAll) {
+      const scopeName = (sl as unknown as { scope?: { name?: string } }).scope?.name;
+      const records = asArray<LogRecordView>(sl.logRecords);
+      for (const lr of records) {
+        if (Array.isArray(lr.attributes) && lr.attributes.length > 0) scopeRecords.push({ scopeName, record: lr });
+      }
+    }
+    if (scopeRecords.length > 0) {
+      sections.push(
+        <Collapsible key="records" title="Log records" defaultOpen>
+          <section className="space-y-3">
+            {scopeRecords.map(({ scopeName, record }, i) => (
+              <Collapsible
+                key={`${scopeName ?? "_"}-${keyForLog(record)}`}
+                title={record.severityText ?? `Record ${i + 1}`}
+                subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
+              >
+                <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+              </Collapsible>
             ))}
           </section>
-      </Collapsible>
-    );
+        </Collapsible>
+      );
+    }
   }
 
   return <section className="space-y-3">{sections}</section>;
