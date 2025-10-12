@@ -52,13 +52,13 @@ function renderBySignal(
   if (!parsed) {
     return <p className="text-sm text-muted-foreground">Paste telemetry data to begin.</p>;
   }
-  if (signal === "traces") return renderTraces(parsed as TracesDocView);
+  if (signal === "traces") return renderTraces(parsed as TracesDocView, opts!);
   if (signal === "logs") return renderLogs(parsed as LogsDocView, opts!);
   if (signal === "metrics") return renderMetrics(parsed as MetricsDocView, opts!);
   return <p className="text-sm text-muted-foreground">Unsupported telemetry format.</p>;
 }
 
-function renderTraces(doc: TracesDocView) {
+function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; setLogsView: (v: "grouped" | "flat") => void }) {
   const rss = asArray<ResourceSpansView>(doc.resourceSpans);
   if (rss.length === 0) return <p className="text-sm text-muted-foreground">No trace content.</p>;
 
@@ -73,27 +73,41 @@ function renderTraces(doc: TracesDocView) {
     );
   }
 
-  // Scopes (only show scopes that actually have attributes)
-  const scopeSpansAll = rss.flatMap((rs) => asArray<ScopeSpansView>(rs.scopeSpans));
-  const scopesWithAttrs = scopeSpansAll.filter((ss) => Array.isArray(ss.scope?.attributes) && (ss.scope?.attributes?.length ?? 0) > 0);
-  if (scopesWithAttrs.length > 0) {
-    sections.push(
-      <Collapsible key="scopes" title="Scopes" defaultOpen>
-        <section className="space-y-3">
-          {scopesWithAttrs.map((ss, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
-              <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-            </Collapsible>
-          ))}
-        </section>
-      </Collapsible>
-    );
-  }
+  // View switcher for traces (grouped scopes vs flat spans)
+  sections.push(
+    <section key="trace-view" className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">View:</span>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "grouped" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("grouped")}>Grouped</button>
+      <button type="button" className={`text-xs rounded px-2 py-1 border ${opts.logsView === "flat" ? "bg-secondary" : ""}`} onClick={() => opts.setLogsView("flat")}>Flat</button>
+    </section>
+  );
 
-  // Spans (top-level, not nested inside scopes)
-  const spansAll = scopeSpansAll.flatMap((ss) => asArray<SpanView>(ss.spans));
-  const spansElement = renderSpans(spansAll);
-  if (spansElement) sections.push(<section key="spans">{spansElement}</section>);
+  const scopeSpansAll = rss.flatMap((rs) => asArray<ScopeSpansView>(rs.scopeSpans));
+
+  if (opts.logsView === "grouped") {
+    const scopesWithAttrsOrSpans = scopeSpansAll.filter((ss) => (Array.isArray(ss.scope?.attributes) && (ss.scope?.attributes?.length ?? 0) > 0) || (Array.isArray(ss.spans) && ss.spans.length > 0));
+    if (scopesWithAttrsOrSpans.length > 0) {
+      sections.push(
+        <Collapsible key="scopes" title="Scopes" defaultOpen>
+          <section className="space-y-3">
+            {scopesWithAttrsOrSpans.map((ss, i) => (
+              <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} defaultOpen>
+                {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
+                  <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                )}
+                {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans)}
+              </Collapsible>
+            ))}
+          </section>
+        </Collapsible>
+      );
+    }
+  } else {
+    // Flat list of spans across scopes
+    const spansAll = scopeSpansAll.flatMap((ss) => asArray<SpanView>(ss.spans));
+    const spansElement = renderSpans(spansAll);
+    if (spansElement) sections.push(<section key="spans">{spansElement}</section>);
+  }
 
   return <section className="space-y-3">{sections}</section>;
 }
