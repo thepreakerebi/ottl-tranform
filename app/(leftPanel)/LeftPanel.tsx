@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import TelemetryEditor from "./TelemetryEditor";
-import PanelBlocksSection from "./PanelBlocksSection";
 
 export default function LeftPanel() {
   return (
@@ -15,7 +14,6 @@ export default function LeftPanel() {
         <p className="text-sm text-muted-foreground">Paste telemetry data below</p>
       </header>
       <TelemetryEditor />
-      <PanelBlocksSection />
     </aside>
   );
 }
