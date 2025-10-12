@@ -129,6 +129,18 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
               </section>
             )}
           </section>
+          {/* Collision policy field (belongs inside the form) */}
+          <section className="space-y-2">
+            <Label htmlFor="dlg-collision">If key exists</Label>
+            <Select value={collision} onValueChange={(v) => setCollision(v as "upsert" | "skip" | "onlyIfMissing")}>
+              <SelectTrigger id="dlg-collision" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="upsert">Upsert (replace existing)</SelectItem>
+                <SelectItem value="skip">Skip</SelectItem>
+                <SelectItem value="onlyIfMissing">Only if missing</SelectItem>
+              </SelectContent>
+            </Select>
+          </section>
         </form>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -136,18 +148,6 @@ export default function AddAttributeDialog({ open, onOpenChange, targetTitle, on
             Save
           </Button>
         </DialogFooter>
-        {/* Collision policy field */}
-        <section className="mt-4 space-y-2">
-          <Label htmlFor="dlg-collision">If key exists</Label>
-          <Select value={collision} onValueChange={(v) => setCollision(v as "upsert" | "skip" | "onlyIfMissing")}>
-            <SelectTrigger id="dlg-collision" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="upsert">Upsert (replace existing)</SelectItem>
-              <SelectItem value="skip">Skip</SelectItem>
-              <SelectItem value="onlyIfMissing">Only if missing</SelectItem>
-            </SelectContent>
-          </Select>
-        </section>
       </DialogContent>
     </Dialog>
   );

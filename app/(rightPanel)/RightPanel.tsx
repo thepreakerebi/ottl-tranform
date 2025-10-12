@@ -161,7 +161,7 @@ export default function RightPanel() {
                   <span role="status" aria-live="polite" className="text-[11px] text-green-600 ml-1">Copied!</span>
                 )}
               </section>
-              <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span>
+              {/* <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span> */}
             </div>
             {/* After section - takes half the remaining height */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
