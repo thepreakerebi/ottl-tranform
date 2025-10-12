@@ -256,7 +256,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
                 title={record.severityText ?? `Record ${i + 1}`}
                 subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
               >
-                <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+                <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${i + 1}`, { kind: "log", indexPath: [i] })} />
               </Collapsible>
             ))}
           </section>
