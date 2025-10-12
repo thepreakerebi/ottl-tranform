@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
+import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
 // import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
@@ -10,11 +11,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../
 import { toast } from "sonner";
 
 export default function RightPanel() {
+  const parsed = useTelemetryStore((s) => s.parsed);
   const snapshots = usePreviewStore((s) => s.snapshots);
   const stepIndex = usePreviewStore((s) => s.stepIndex);
   const setStepIndex = usePreviewStore((s) => s.setStepIndex);
   const shouldAutoJump = usePreviewStore((s) => s.shouldAutoJump);
   const setAutoJump = usePreviewStore((s) => s.setAutoJump);
+  const clearPreview = usePreviewStore((s) => s.clear);
   const blocks = usePipelineStore((s) => s.blocks);
 
   const options = useMemo(() => {
@@ -65,6 +68,12 @@ export default function RightPanel() {
     setStepIndex(last);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshots.length]);
+
+  // When telemetry changes in Left Panel, reset the preview (fresh context)
+  useEffect(() => {
+    clearPreview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed]);
 
   return (
     <aside aria-label="Preview panel" className="h-full border-l overflow-hidden flex flex-col">
@@ -161,7 +170,7 @@ export default function RightPanel() {
                   <span role="status" aria-live="polite" className="text-[11px] text-green-600 ml-1">Copied!</span>
                 )}
               </section>
-              {/* <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span> */}
+              <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span>
             </div>
             {/* After section - takes half the remaining height */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
