@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePreviewStore } from "../../lib/stores/previewStore";
 import { usePipelineStore } from "../../lib/stores/pipelineStore";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
 import { ArrowDown, Copy, Undo2, Redo2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
@@ -34,6 +34,7 @@ export default function RightPanel() {
     return u;
   }, [diffHighlights]);
   const highlightList = useMemo(() => clusterHighlights(unionForClusters), [unionForClusters]);
+  const changeCount = useMemo(() => changeCountFromHighlights(pretty(current?.before), afterStr, diffHighlights, highlightList.length), [current, afterStr, diffHighlights, highlightList.length]);
   const [jumpIndex, setJumpIndex] = useState(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -160,7 +161,7 @@ export default function RightPanel() {
                   <span role="status" aria-live="polite" className="text-[11px] text-green-600 ml-1">Copied!</span>
                 )}
               </section>
-              <span className="text-muted-foreground">{options[stepIndex]?.label}{highlightList.length ? ` • ${highlightList.length} change${highlightList.length>1?"s":""}` : ""}</span>
+              <span className="text-muted-foreground">{options[stepIndex]?.label}{changeCount ? ` • ${changeCount} change${changeCount>1?"s":""}` : ""}</span>
             </div>
             {/* After section - takes half the remaining height */}
             <div className="flex-1 min-h-0 overflow-auto" ref={contentRef} onScrollCapture={() => { if (shouldAutoJump) setAutoJump(false); }}>
@@ -218,6 +219,31 @@ function computeHighlights(beforeText: string, afterText: string) {
     if (!afterSet.has(line)) removedMap.set(Math.min(idx, afterLines.length - 1), line);
   });
   return { added, removed, removedMap };
+}
+
+// Heuristic: group structural additions of a single attribute (key+value lines) as one change
+function changeCountFromHighlights(beforeText: string, afterText: string, highlights: { added: Set<number>; removed: Set<number> }, clusterLen: number) {
+  if (!afterText) return 0;
+  // Start with cluster count as baseline
+  let count = clusterLen;
+  const lines = afterText.split("\n");
+  // If two consecutive added lines contain '"key"' and '"value"', treat them as one change
+  const added = Array.from(highlights.added).sort((a, b) => a - b);
+  for (let i = 0; i < added.length - 1; i++) {
+    const a = added[i];
+    const b = added[i + 1];
+    if (b === a + 1) {
+      const la = lines[a]?.trim() ?? "";
+      const lb = lines[b]?.trim() ?? "";
+      const looksLikeKey = /"key"\s*:/.test(la) || /"key"\s*:/.test(lb);
+      const looksLikeValue = /"value"\s*:/.test(la) || /"value"\s*:/.test(lb);
+      if (looksLikeKey && looksLikeValue && count > 0) {
+        count -= 1; // merge the pair into a single change
+        i++; // skip next since merged
+      }
+    }
+  }
+  return Math.max(count, 0);
 }
 
 function renderHighlighted(text: string, highlights: { added: Set<number>; removed: Set<number>; removedMap?: Map<number, string> }) {
