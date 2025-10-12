@@ -142,49 +142,39 @@ function renderLogs(doc: LogsDocView) {
   const rls = asArray<ResourceLogsView>(doc.resourceLogs);
   if (rls.length === 0) return <p className="text-sm text-muted-foreground">No log content.</p>;
 
-  const first = rls[0];
   const sections: ReactNode[] = [];
-  sections.push(
-    <Collapsible key="resource" title="Resource">
-      <AttributesTable attributes={(first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-    </Collapsible>
-  );
+  // Resource (only if attributes exist)
+  const first = rls[0];
+  const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
+  if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
+    sections.push(
+      <Collapsible key="resource" title="Resource">
+        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
+      </Collapsible>
+    );
+  }
 
-  const scopeLogs = rls.flatMap((rl) => asArray<ScopeLogsView>(rl.scopeLogs));
-  sections.push(
-    <Collapsible key="scopes" title="Scopes" defaultOpen>
-      <section className="space-y-3">
-        {scopeLogs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No scopes.</p>
-        ) : (
-          scopeLogs.map((sl, i) => (
-            <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`}>
-              <AttributesTable attributes={(sl as unknown as { scope?: { attributes?: AttributeKV[] } })?.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-              {renderLogRecords(asArray<LogRecordView>(sl.logRecords))}
+  // Log records (no scope header unless scope has attributes, per spec we show records directly)
+  const allRecords = rls.flatMap((rl) => asArray<ScopeLogsView>(rl.scopeLogs)).flatMap((sl) => asArray<LogRecordView>(sl.logRecords));
+  const recordsWithAttrs = allRecords.filter((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0);
+  if (recordsWithAttrs.length > 0) {
+    sections.push(
+      <Collapsible key="records" title="Log records" defaultOpen>
+          <section className="space-y-3">
+          {recordsWithAttrs.map((lr, i) => (
+            <Collapsible key={keyForLog(lr)} title={lr.severityText ?? `Record ${i + 1}`} subtitle={lr.timeUnixNano}>
+              <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
             </Collapsible>
-          ))
-        )}
-      </section>
-    </Collapsible>
-  );
+            ))}
+          </section>
+      </Collapsible>
+    );
+  }
 
   return <section className="space-y-3">{sections}</section>;
 }
 
-function renderLogRecords(records: LogRecordView[]) {
-  if (!records.length) return <p className="text-sm text-muted-foreground">No log records.</p>;
-  return (
-    <Collapsible title="Log records" defaultOpen>
-      <section className="space-y-3">
-        {records.map((lr, i) => (
-          <Collapsible key={keyForLog(lr)} title={lr.severityText ?? `Record ${i + 1}`} subtitle={lr.timeUnixNano}>
-            <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => {}} />
-          </Collapsible>
-        ))}
-      </section>
-    </Collapsible>
-  );
-}
+// (helper removed; inline rendering used in renderLogs)
 
 function renderMetrics(doc: MetricsDocView) {
   const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
@@ -211,8 +201,8 @@ function renderMetrics(doc: MetricsDocView) {
               {renderMetricSeries(asArray<MetricView>(sm.metrics))}
             </Collapsible>
           ))
-        )}
-      </section>
+      )}
+    </section>
     </Collapsible>
   );
 
