@@ -58,10 +58,10 @@ export default function CanvasView() {
   }
 
   return (
-    <section aria-label="Canvas" className="h-full overflow-hidden">
-      <section className="flex h-full gap-4">
+    <section className="h-full overflow-hidden">
+      <section className="flex h-full gap-0">
         {parsed ? (
-          <aside aria-label="Locations" className="w-[140px] shrink-0 border rounded-md bg-card text-card-foreground">
+          <aside aria-label="Locations" className="w-[100px] py-4 shrink-0 border-r bg-card text-card-foreground">
             <nav aria-label="Location sections">
               <ul className="flex flex-col gap-2">
                 {locationTabs.map((t) => (
@@ -343,7 +343,7 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
   const resourceAttrs = (rss[0] as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <section id="loc-resource">
+      <section id="loc-resource" key="loc-resource">
         <Collapsible key="resource" title="Resource">
           <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
         </Collapsible>
@@ -366,16 +366,18 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
     const scopesWithAttrsOrSpans = scopeSpansAll.filter((ss) => (Array.isArray(ss.scope?.attributes) && (ss.scope?.attributes?.length ?? 0) > 0) || (Array.isArray(ss.spans) && ss.spans.length > 0));
     if (scopesWithAttrsOrSpans.length > 0) {
       sections.push(
-        <section id="loc-scopes">
+        <section id="loc-scopes" key="loc-scopes">
           <Collapsible key="scopes" title="Scopes" defaultOpen>
             <section className="space-y-3">
               {scopesWithAttrsOrSpans.map((ss, i) => (
-                <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} defaultOpen>
-                  {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
-                    <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
-                  )}
-                  {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans, opts.openAdd, i)}
-                </Collapsible>
+                <section id={`loc-scope-${i + 1}`} key={`loc-scope-${i + 1}`}>
+                  <Collapsible title={`Scope ${i + 1}`} defaultOpen>
+                    {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
+                      <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
+                    )}
+                    {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans, opts.openAdd, i)}
+                  </Collapsible>
+                </section>
               ))}
             </section>
           </Collapsible>
@@ -386,7 +388,11 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
     // Flat list of spans across scopes
     const spansAll = scopeSpansAll.flatMap((ss) => asArray<SpanView>(ss.spans));
     const spansElement = renderSpans(spansAll, opts.openAdd);
-    if (spansElement) sections.push(<section key="spans" id="loc-spans">{spansElement}</section>);
+    if (spansElement) sections.push(
+      <section key="loc-spans" id="loc-spans">
+        {spansElement}
+      </section>
+    );
   }
 
   return <section className="space-y-3">{sections}</section>;
@@ -394,19 +400,22 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
 
 function renderSpans(spans: SpanView[], openAdd?: (title: string, path: { kind: "resource" | "scope" | "span" | "log" | "datapoint"; indexPath?: number[] }) => void, scopeIndex?: number) {
   if (!spans.length) return null;
+  const scopeKey = scopeIndex != null ? String(scopeIndex) : "flat";
   return (
     <Collapsible title="Spans" defaultOpen>
           <section className="space-y-3">
         {spans.map((sp, idx) => (
-          <Collapsible key={sp.spanId ?? `${sp.name ?? "span"}-${idx}`} title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined}>
-            <AttributesTable
-              attributes={sp.attributes}
-              actions={{ onRemove: () => {}, onMask: () => {} }}
-              onAddAttribute={openAdd ? () => openAdd(sp.name ? `Span: ${sp.name}` : `Span ${idx + 1}`, { kind: "span", indexPath: scopeIndex != null ? [scopeIndex, idx] : [idx] }) : undefined}
-            />
-            {renderSpanEvents(sp as unknown as { events?: Array<{ attributes?: AttributeKV[] }> })}
-            {renderSpanLinks(sp as unknown as { links?: Array<{ attributes?: AttributeKV[] }> })}
-          </Collapsible>
+          <section id={`loc-span-${scopeKey}-${idx}`} key={`loc-span-${scopeKey}-${idx}`}>
+            <Collapsible title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined}>
+              <AttributesTable
+                attributes={sp.attributes}
+                actions={{ onRemove: () => {}, onMask: () => {} }}
+                onAddAttribute={openAdd ? () => openAdd(sp.name ? `Span: ${sp.name}` : `Span ${idx + 1}`, { kind: "span", indexPath: scopeIndex != null ? [scopeIndex, idx] : [idx] }) : undefined}
+              />
+              {renderSpanEvents(sp as unknown as { events?: Array<{ attributes?: AttributeKV[] }> })}
+              {renderSpanLinks(sp as unknown as { links?: Array<{ attributes?: AttributeKV[] }> })}
+            </Collapsible>
+          </section>
         ))}
       </section>
     </Collapsible>
@@ -453,7 +462,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
   const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <section id="loc-resource">
+      <section id="loc-resource" key="loc-resource">
         <Collapsible key="resource" title="Resource">
           <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
         </Collapsible>
@@ -517,7 +526,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
     }
     if (scopeRecords.length > 0) {
       sections.push(
-        <section id="loc-records">
+        <section id="loc-records" key="loc-records">
           <Collapsible key="records" title="Log records" defaultOpen>
             <section className="space-y-3">
               {scopeRecords.map(({ scopeName, record }, i) => (
@@ -552,7 +561,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
   const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <section id="loc-resource">
+      <section id="loc-resource" key="loc-resource">
         <Collapsible key="resource" title="Resource">
           <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
         </Collapsible>
@@ -621,7 +630,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
       });
       if (allDps.length) {
         sections.push(
-          <section id="loc-datapoints">
+          <section id="loc-datapoints" key="loc-datapoints">
             <Collapsible key="flat-dps" title="Datapoints" defaultOpen>
               <section className="space-y-3">
                 {allDps.map(({ metric, scopeLabel, dp, idx }) => (
@@ -666,12 +675,19 @@ function computeLocationTabs(parsed: unknown, signal: string, opts: { logsView: 
       const rs0 = rss[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeSpans?: ScopeSpansView[] };
       const hasResource = Array.isArray(rs0?.resource?.attributes) && (rs0.resource!.attributes!.length > 0);
       const scopeSpans = asArray<ScopeSpansView>(rs0?.scopeSpans);
-      const hasScopes = scopeSpans.length > 0;
-      const spansAll = scopeSpans.flatMap((ss) => asArray<SpanView>(ss.spans));
-      const hasSpans = spansAll.length > 0;
       if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
-      if (hasScopes) tabs.push({ id: "loc-scopes", label: "Scopes" });
-      if (opts.logsView === "flat" && hasSpans) tabs.push({ id: "loc-spans", label: "Spans" });
+      // Per-scope entries (if scope has attributes or spans)
+      scopeSpans.forEach((ss, i) => {
+        const scopeHasAttrs = Array.isArray(ss.scope?.attributes) && (ss.scope!.attributes!.length > 0);
+        const spans = asArray<SpanView>(ss.spans);
+        const scopeHasSpans = spans.length > 0;
+        if (scopeHasAttrs || scopeHasSpans) tabs.push({ id: `loc-scope-${i + 1}`, label: `Scope ${i + 1}` });
+        // Per-span entries (only those with attributes)
+        spans.forEach((sp, idx) => {
+          const hasSpanAttrs = Array.isArray(sp.attributes) && (sp.attributes!.length > 0);
+          if (hasSpanAttrs) tabs.push({ id: `loc-span-${String(i)}-${idx}`, label: sp.name ?? `Span ${idx + 1}` });
+        });
+      });
     } else if (signal === "logs") {
       const doc = parsed as LogsDocView;
       const rls = asArray<ResourceLogsView>(doc.resourceLogs);
