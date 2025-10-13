@@ -6,6 +6,7 @@ import { useTelemetryStore } from "../../lib/stores/telemetryStore";
 import AttributesTable from "./_components/AttributesTable";
 import Collapsible from "./_components/Collapsible";
 import AddAttributeDialog from "./_components/AddAttributeDialog";
+import { Button } from "../../components/ui/button";
 
 // Minimal OTLP view models (read-only)
 type AttributeKV = { key: string; value: Record<string, unknown> };
@@ -47,9 +48,42 @@ export default function CanvasView() {
 
   const content = useMemo(() => renderBySignal(parsed, signal, { logsView, setLogsView, openAdd }), [parsed, signal, logsView]);
 
+  const locationTabs = useMemo(() => computeLocationTabs(parsed, signal, { logsView }), [parsed, signal, logsView]);
+
+  function scrollToAnchor(id: string) {
+    try {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {}
+  }
+
   return (
-    <section aria-label="Canvas" className="h-full overflow-y-auto overflow-x-hidden p-4">
-      {content}
+    <section aria-label="Canvas" className="h-full overflow-hidden">
+      <section className="flex h-full gap-4">
+        {parsed ? (
+          <aside aria-label="Locations" className="w-[140px] shrink-0 border rounded-md bg-card text-card-foreground">
+            <nav aria-label="Location sections">
+              <ul className="flex flex-col gap-2">
+                {locationTabs.map((t) => (
+                  <li key={t.id}>
+                    <Button type="button" variant="ghost" className="w-full justify-start overflow-hidden" onClick={() => scrollToAnchor(t.id)} aria-controls={t.id}>
+                      <span className="truncate">{t.label}</span>
+                    </Button>
+                  </li>
+                ))}
+                {locationTabs.length === 0 && (
+                  <li>
+                    <span className="text-xs text-muted-foreground">No locations</span>
+                  </li>
+                )}
+              </ul>
+            </nav>
+          </aside>
+        ) : null}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4" aria-label="Canvas content">
+          {content}
+        </main>
+      </section>
       <AddAttributeDialog
         open={addOpen}
         onOpenChange={setAddOpen}
@@ -309,9 +343,11 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
   const resourceAttrs = (rss[0] as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
-      </Collapsible>
+      <section id="loc-resource">
+        <Collapsible key="resource" title="Resource">
+          <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
+        </Collapsible>
+      </section>
     );
   }
 
@@ -330,25 +366,27 @@ function renderTraces(doc: TracesDocView, opts: { logsView: "grouped" | "flat"; 
     const scopesWithAttrsOrSpans = scopeSpansAll.filter((ss) => (Array.isArray(ss.scope?.attributes) && (ss.scope?.attributes?.length ?? 0) > 0) || (Array.isArray(ss.spans) && ss.spans.length > 0));
     if (scopesWithAttrsOrSpans.length > 0) {
       sections.push(
-        <Collapsible key="scopes" title="Scopes" defaultOpen>
-          <section className="space-y-3">
-            {scopesWithAttrsOrSpans.map((ss, i) => (
-              <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} defaultOpen>
-                {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
-                  <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
-                )}
-                {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans, opts.openAdd, i)}
-              </Collapsible>
-            ))}
-          </section>
-        </Collapsible>
+        <section id="loc-scopes">
+          <Collapsible key="scopes" title="Scopes" defaultOpen>
+            <section className="space-y-3">
+              {scopesWithAttrsOrSpans.map((ss, i) => (
+                <Collapsible key={`scope-${i}`} title={`Scope ${i + 1}`} defaultOpen>
+                  {Array.isArray(ss.scope?.attributes) && ss.scope!.attributes!.length > 0 && (
+                    <AttributesTable attributes={ss.scope?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope ${i + 1}`, { kind: "scope", indexPath: [i] })} />
+                  )}
+                  {Array.isArray(ss.spans) && ss.spans.length > 0 && renderSpans(ss.spans, opts.openAdd, i)}
+                </Collapsible>
+              ))}
+            </section>
+          </Collapsible>
+        </section>
       );
     }
   } else {
     // Flat list of spans across scopes
     const spansAll = scopeSpansAll.flatMap((ss) => asArray<SpanView>(ss.spans));
     const spansElement = renderSpans(spansAll, opts.openAdd);
-    if (spansElement) sections.push(<section key="spans">{spansElement}</section>);
+    if (spansElement) sections.push(<section key="spans" id="loc-spans">{spansElement}</section>);
   }
 
   return <section className="space-y-3">{sections}</section>;
@@ -358,7 +396,7 @@ function renderSpans(spans: SpanView[], openAdd?: (title: string, path: { kind: 
   if (!spans.length) return null;
   return (
     <Collapsible title="Spans" defaultOpen>
-      <section className="space-y-3">
+          <section className="space-y-3">
         {spans.map((sp, idx) => (
           <Collapsible key={sp.spanId ?? `${sp.name ?? "span"}-${idx}`} title={sp.name ?? `Span ${idx + 1}`} subtitle={sp.spanId ? `spanId: ${sp.spanId}` : undefined}>
             <AttributesTable
@@ -399,8 +437,8 @@ function renderSpanLinks(sp: { links?: Array<{ attributes?: AttributeKV[] }> }) 
       <section className="space-y-3">
         {withAttrs.map((l, i) => (
           <AttributesTable key={`link-${i}`} title={`Link ${i + 1}`} attributes={l.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} />
-        ))}
-      </section>
+            ))}
+          </section>
     </Collapsible>
   );
 }
@@ -415,9 +453,11 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
   const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
-      </Collapsible>
+      <section id="loc-resource">
+        <Collapsible key="resource" title="Resource">
+          <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
+        </Collapsible>
+      </section>
     );
   }
 
@@ -435,7 +475,7 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
   if (opts.logsView === "grouped") {
     // Group by scope, show scope header (name@version) and records under it; attributes shown if present
     sections.push(
-      <section key="grouped" className="space-y-3">
+      <section key="grouped" id="loc-scopes" className="space-y-3">
         {scopeLogsAll.map((sl, i) => {
           const sc = (sl as unknown as { scope?: { name?: string; version?: string; attributes?: AttributeKV[] } }).scope;
           const label = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || `Scope ${i + 1}`;
@@ -448,15 +488,17 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
                 <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
               )}
               {recordsWithAttrs.length > 0 && (
-                <Collapsible title="Log records" defaultOpen>
-                  <section className="space-y-3">
-                    {recordsWithAttrs.map((lr, j) => (
-                      <Collapsible key={`rec-${i}-${j}-${keyForLog(lr)}`} title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
-                        <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${j + 1}`, { kind: "log", indexPath: [i, j] })} />
-                      </Collapsible>
-                    ))}
-                  </section>
-                </Collapsible>
+                <section id="loc-records">
+                  <Collapsible title="Log records" defaultOpen>
+                    <section className="space-y-3">
+                      {recordsWithAttrs.map((lr, j) => (
+                        <Collapsible key={`rec-${i}-${j}-${keyForLog(lr)}`} title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
+                          <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${j + 1}`, { kind: "log", indexPath: [i, j] })} />
+                        </Collapsible>
+                      ))}
+                    </section>
+                  </Collapsible>
+                </section>
               )}
             </Collapsible>
           );
@@ -475,19 +517,21 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
     }
     if (scopeRecords.length > 0) {
       sections.push(
-        <Collapsible key="records" title="Log records" defaultOpen>
-          <section className="space-y-3">
-            {scopeRecords.map(({ scopeName, record }, i) => (
-              <Collapsible
-                key={`${scopeName ?? "_"}-${keyForLog(record)}`}
-                title={record.severityText ?? `Record ${i + 1}`}
-                subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
-              >
-                <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${i + 1}`, { kind: "log", indexPath: [i] })} />
-              </Collapsible>
-            ))}
-          </section>
-        </Collapsible>
+        <section id="loc-records">
+          <Collapsible key="records" title="Log records" defaultOpen>
+            <section className="space-y-3">
+              {scopeRecords.map(({ scopeName, record }, i) => (
+                <Collapsible
+                  key={`${scopeName ?? "_"}-${keyForLog(record)}`}
+                  title={record.severityText ?? `Record ${i + 1}`}
+                  subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
+                >
+                  <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${i + 1}`, { kind: "log", indexPath: [i] })} />
+                </Collapsible>
+              ))}
+            </section>
+          </Collapsible>
+        </section>
       );
     }
   }
@@ -508,9 +552,11 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
   const resourceAttrs = (first as unknown as { resource?: { attributes?: AttributeKV[] } })?.resource?.attributes;
   if (Array.isArray(resourceAttrs) && resourceAttrs.length > 0) {
     sections.push(
-      <Collapsible key="resource" title="Resource">
-        <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
-      </Collapsible>
+      <section id="loc-resource">
+        <Collapsible key="resource" title="Resource">
+          <AttributesTable attributes={resourceAttrs} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd("Resource", { kind: "resource" })} />
+        </Collapsible>
+      </section>
     );
   }
 
@@ -527,7 +573,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
 
   if (opts.logsView === "grouped") {
     sections.push(
-      <section key="grouped-metrics" className="space-y-3">
+      <section key="grouped-metrics" id="loc-scopes" className="space-y-3">
         {scopeMetricsAll.map((sm, i) => {
           const sc = (sm as unknown as { scope?: { name?: string; version?: string; attributes?: AttributeKV[] } }).scope;
           const label = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || `Scope ${i + 1}`;
@@ -541,7 +587,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
                 <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
               )}
               {hasMetrics && (
-                <section className="space-y-3">
+                <section className="space-y-3" id={i === 0 ? "loc-datapoints" : undefined}>
                   {metrics.flatMap((m, mi) => {
                     const dps = metricDatapointsOf(m);
                     return dps.map((dp, di) => (
@@ -575,15 +621,17 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
       });
       if (allDps.length) {
         sections.push(
-          <Collapsible key="flat-dps" title="Datapoints" defaultOpen>
-            <section className="space-y-3">
-              {allDps.map(({ metric, scopeLabel, dp, idx }) => (
-                <Collapsible key={`dp-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
-                  <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${idx}`, { kind: "datapoint", indexPath: [idx] })} />
-                </Collapsible>
-              ))}
-            </section>
-          </Collapsible>
+          <section id="loc-datapoints">
+            <Collapsible key="flat-dps" title="Datapoints" defaultOpen>
+              <section className="space-y-3">
+                {allDps.map(({ metric, scopeLabel, dp, idx }) => (
+                  <Collapsible key={`dp-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
+                    <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${idx}`, { kind: "datapoint", indexPath: [idx] })} />
+                  </Collapsible>
+                ))}
+              </section>
+            </Collapsible>
+          </section>
         );
       }
     }
@@ -607,5 +655,55 @@ function asArray<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []
 function keyFallback(): string { return Math.random().toString(36).slice(2); }
 function keyForLog(lr: LogRecordView): string { return lr.timeUnixNano ?? (typeof lr.body === "string" ? lr.body.slice(0, 32) : undefined) ?? keyFallback(); }
 // function keyForMetric(m: MetricView): string { return m.name ?? keyFallback(); }
+
+function computeLocationTabs(parsed: unknown, signal: string, opts: { logsView: "grouped" | "flat" }): Array<{ id: string; label: string }> {
+  const tabs: Array<{ id: string; label: string }> = [];
+  try {
+    if (!parsed) return tabs;
+    if (signal === "traces") {
+      const doc = parsed as TracesDocView;
+      const rss = asArray<ResourceSpansView>(doc.resourceSpans);
+      const rs0 = rss[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeSpans?: ScopeSpansView[] };
+      const hasResource = Array.isArray(rs0?.resource?.attributes) && (rs0.resource!.attributes!.length > 0);
+      const scopeSpans = asArray<ScopeSpansView>(rs0?.scopeSpans);
+      const hasScopes = scopeSpans.length > 0;
+      const spansAll = scopeSpans.flatMap((ss) => asArray<SpanView>(ss.spans));
+      const hasSpans = spansAll.length > 0;
+      if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
+      if (hasScopes) tabs.push({ id: "loc-scopes", label: "Scopes" });
+      if (opts.logsView === "flat" && hasSpans) tabs.push({ id: "loc-spans", label: "Spans" });
+    } else if (signal === "logs") {
+      const doc = parsed as LogsDocView;
+      const rls = asArray<ResourceLogsView>(doc.resourceLogs);
+      const rl0 = rls[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeLogs?: ScopeLogsView[] };
+      const hasResource = Array.isArray(rl0?.resource?.attributes) && (rl0.resource!.attributes!.length > 0);
+      const scopeLogs = asArray<ScopeLogsView>(rl0?.scopeLogs);
+      const hasScopeAttrs = scopeLogs.some((sl) => {
+        const sc = (sl as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
+        return Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0);
+      });
+      const hasRecords = scopeLogs.some((sl) => asArray<LogRecordView>(sl.logRecords).some((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0));
+      if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
+      if (hasScopeAttrs) tabs.push({ id: "loc-scopes", label: "Scopes" });
+      if (hasRecords) tabs.push({ id: "loc-records", label: "Log records" });
+    } else if (signal === "metrics") {
+      const doc = parsed as MetricsDocView;
+      const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
+      const rm0 = rms[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeMetrics?: ScopeMetricsView[] };
+      const hasResource = Array.isArray(rm0?.resource?.attributes) && (rm0.resource!.attributes!.length > 0);
+      const scopeMetrics = asArray<ScopeMetricsView>(rm0?.scopeMetrics);
+      const hasScopes = scopeMetrics.some((sm) => {
+        const sc = (sm as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
+        const metrics = (sm as unknown as { metrics?: MetricView[] }).metrics;
+        return (Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0)) || (asArray<MetricView>(metrics).length > 0);
+      });
+      const hasDatapoints = scopeMetrics.some((sm) => asArray<MetricView>((sm as unknown as { metrics?: MetricView[] }).metrics).some((m) => metricDatapointsOf(m).length > 0));
+      if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
+      if (hasScopes) tabs.push({ id: "loc-scopes", label: "Scopes" });
+      if (hasDatapoints) tabs.push({ id: "loc-datapoints", label: "Datapoints" });
+    }
+  } catch {}
+  return tabs;
+}
 
 
