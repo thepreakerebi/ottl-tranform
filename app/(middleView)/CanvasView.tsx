@@ -492,24 +492,28 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
           const recordsWithAttrs = records.filter((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0);
           if (!sc?.attributes?.length && recordsWithAttrs.length === 0) return null;
           return (
-            <Collapsible key={`scope-block-${i}`} title={`Scope: ${label}`} defaultOpen>
-              {Array.isArray(sc?.attributes) && sc.attributes.length > 0 && (
-                <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
-              )}
-              {recordsWithAttrs.length > 0 && (
-                <section id="loc-records">
-                  <Collapsible title="Log records" defaultOpen>
-                    <section className="space-y-3">
-                      {recordsWithAttrs.map((lr, j) => (
-                        <Collapsible key={`rec-${i}-${j}-${keyForLog(lr)}`} title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
-                          <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${j + 1}`, { kind: "log", indexPath: [i, j] })} />
-                        </Collapsible>
-                      ))}
-                    </section>
-                  </Collapsible>
-                </section>
-              )}
-            </Collapsible>
+            <section id={`loc-log-scope-${i + 1}`} key={`loc-log-scope-${i + 1}`}>
+              <Collapsible key={`scope-block-${i}`} title={`Scope: ${label}`} defaultOpen>
+                {Array.isArray(sc?.attributes) && sc.attributes.length > 0 && (
+                  <AttributesTable title="Attributes" attributes={sc.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
+                )}
+                {recordsWithAttrs.length > 0 && (
+                  <section>
+                    <Collapsible title="Log records" defaultOpen>
+                      <section className="space-y-3">
+                        {recordsWithAttrs.map((lr, j) => (
+                          <section id={`loc-record-${i}-${j}`} key={`loc-record-${i}-${j}`}>
+                            <Collapsible title={lr.severityText ?? `Record ${j + 1}`} subtitle={lr.timeUnixNano}>
+                              <AttributesTable attributes={lr.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${j + 1}`, { kind: "log", indexPath: [i, j] })} />
+                            </Collapsible>
+                          </section>
+                        ))}
+                      </section>
+                    </Collapsible>
+                  </section>
+                )}
+              </Collapsible>
+            </section>
           );
         })}
       </section>
@@ -530,13 +534,15 @@ function renderLogs(doc: LogsDocView, opts: { logsView: "grouped" | "flat"; setL
           <Collapsible key="records" title="Log records" defaultOpen>
             <section className="space-y-3">
               {scopeRecords.map(({ scopeName, record }, i) => (
-                <Collapsible
-                  key={`${scopeName ?? "_"}-${keyForLog(record)}`}
-                  title={record.severityText ?? `Record ${i + 1}`}
-                  subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
-                >
-                  <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${i + 1}`, { kind: "log", indexPath: [i] })} />
-                </Collapsible>
+                <section id={`loc-record-flat-${i}`} key={`loc-record-flat-${i}`}>
+                  <Collapsible
+                    key={`${scopeName ?? "_"}-${keyForLog(record)}`}
+                    title={record.severityText ?? `Record ${i + 1}`}
+                    subtitle={[scopeName, record.timeUnixNano].filter(Boolean).join(" • ") || undefined}
+                  >
+                    <AttributesTable attributes={record.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Record ${i + 1}`, { kind: "log", indexPath: [i] })} />
+                  </Collapsible>
+                </section>
               ))}
             </section>
           </Collapsible>
@@ -582,7 +588,7 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
 
   if (opts.logsView === "grouped") {
     sections.push(
-      <section key="grouped-metrics" id="loc-scopes" className="space-y-3">
+      <section key="loc-scopes" id="loc-scopes" className="space-y-3">
         {scopeMetricsAll.map((sm, i) => {
           const sc = (sm as unknown as { scope?: { name?: string; version?: string; attributes?: AttributeKV[] } }).scope;
           const label = [sc?.name, sc?.version].filter(Boolean).join(" @ ") || `Scope ${i + 1}`;
@@ -591,27 +597,31 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
           const hasMetrics = metrics.length > 0;
           if (!hasScopeAttrs && !hasMetrics) return null;
           return (
-            <Collapsible key={`metric-scope-${i}`} title={`Scope: ${label}`} defaultOpen>
-              {hasScopeAttrs && (
-                <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
-              )}
-              {hasMetrics && (
-                <section className="space-y-3" id={i === 0 ? "loc-datapoints" : undefined}>
-                  {metrics.flatMap((m, mi) => {
-                    const dps = metricDatapointsOf(m);
-                    return dps.map((dp, di) => (
-                      <Collapsible
-                        key={`dp-${i}-${mi}-${di}`}
-                        title={`Datapoint ${di + 1}`}
-                        subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}
-                      >
-                        <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${di + 1}`, { kind: "datapoint", indexPath: [i, mi, di] })} />
-                      </Collapsible>
-                    ));
-                  })}
-                </section>
-              )}
-            </Collapsible>
+            <section id={`loc-metric-scope-${i + 1}`} key={`loc-metric-scope-${i + 1}`}>
+              <Collapsible key={`metric-scope-${i}`} title={`Scope: ${label}`} defaultOpen>
+                {hasScopeAttrs && (
+                  <AttributesTable title="Attributes" attributes={sc?.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Scope: ${label}`, { kind: "scope", indexPath: [i] })} />
+                )}
+                {hasMetrics && (
+                  <section className="space-y-3" id={i === 0 ? "loc-datapoints" : undefined}>
+                    {metrics.flatMap((m, mi) => {
+                      const dps = metricDatapointsOf(m);
+                      return dps.map((dp, di) => (
+                        <section id={`loc-dp-${i}-${mi}-${di}`} key={`loc-dp-${i}-${mi}-${di}`}>
+                          <Collapsible
+                            key={`dp-${i}-${mi}-${di}`}
+                            title={`Datapoint ${di + 1}`}
+                            subtitle={[dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}
+                          >
+                            <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${di + 1}`, { kind: "datapoint", indexPath: [i, mi, di] })} />
+                          </Collapsible>
+                        </section>
+                      ));
+                    })}
+                  </section>
+                )}
+              </Collapsible>
+            </section>
           );
         })}
       </section>
@@ -624,9 +634,9 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
       for (const m of asArray<MetricView>(sm.metrics)) allMetrics.push({ scopeLabel, metric: m });
     }
     if (allMetrics.length) {
-      const allDps: Array<{ scopeLabel?: string; metric: MetricView; dp: DataPointView; idx: number }> = [];
-      allMetrics.forEach(({ scopeLabel, metric }) => {
-        for (const dp of metricDatapointsOf(metric)) allDps.push({ scopeLabel, metric, dp, idx: allDps.length + 1 });
+      const allDps: Array<{ scopeLabel?: string; metric: MetricView; dp: DataPointView; idx: number; coord: { i: number; mi: number; di: number } }> = [];
+      allMetrics.forEach(({ scopeLabel, metric }, mi) => {
+        for (const dp of metricDatapointsOf(metric)) allDps.push({ scopeLabel, metric, dp, idx: allDps.length + 1, coord: { i: 0, mi, di: allDps.length } });
       });
       if (allDps.length) {
         sections.push(
@@ -634,9 +644,11 @@ function renderMetrics(doc: MetricsDocView, opts: { logsView: "grouped" | "flat"
             <Collapsible key="flat-dps" title="Datapoints" defaultOpen>
               <section className="space-y-3">
                 {allDps.map(({ metric, scopeLabel, dp, idx }) => (
-                  <Collapsible key={`dp-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
-                    <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${idx}`, { kind: "datapoint", indexPath: [idx] })} />
-                  </Collapsible>
+                  <section id={`loc-dp-flat-${idx}`} key={`loc-dp-flat-${idx}`}>
+                    <Collapsible key={`dpflat-${idx}-${metric.name ?? "metric"}`} title={`Datapoint ${idx}`} subtitle={[scopeLabel, dp.timeUnixNano, dp.value != null ? `value: ${String(dp.value)}` : undefined].filter(Boolean).join(" • ") || undefined}>
+                      <AttributesTable title="Attributes" attributes={dp.attributes} actions={{ onRemove: () => {}, onMask: () => {} }} onAddAttribute={() => opts.openAdd(`Datapoint ${idx}`, { kind: "datapoint", indexPath: [idx] })} />
+                    </Collapsible>
+                  </section>
                 ))}
               </section>
             </Collapsible>
@@ -676,13 +688,12 @@ function computeLocationTabs(parsed: unknown, signal: string, opts: { logsView: 
       const hasResource = Array.isArray(rs0?.resource?.attributes) && (rs0.resource!.attributes!.length > 0);
       const scopeSpans = asArray<ScopeSpansView>(rs0?.scopeSpans);
       if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
-      // Per-scope entries (if scope has attributes or spans)
+      // Per-scope entries and spans
       scopeSpans.forEach((ss, i) => {
         const scopeHasAttrs = Array.isArray(ss.scope?.attributes) && (ss.scope!.attributes!.length > 0);
         const spans = asArray<SpanView>(ss.spans);
         const scopeHasSpans = spans.length > 0;
         if (scopeHasAttrs || scopeHasSpans) tabs.push({ id: `loc-scope-${i + 1}`, label: `Scope ${i + 1}` });
-        // Per-span entries (only those with attributes)
         spans.forEach((sp, idx) => {
           const hasSpanAttrs = Array.isArray(sp.attributes) && (sp.attributes!.length > 0);
           if (hasSpanAttrs) tabs.push({ id: `loc-span-${String(i)}-${idx}`, label: sp.name ?? `Span ${idx + 1}` });
@@ -694,29 +705,36 @@ function computeLocationTabs(parsed: unknown, signal: string, opts: { logsView: 
       const rl0 = rls[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeLogs?: ScopeLogsView[] };
       const hasResource = Array.isArray(rl0?.resource?.attributes) && (rl0.resource!.attributes!.length > 0);
       const scopeLogs = asArray<ScopeLogsView>(rl0?.scopeLogs);
-      const hasScopeAttrs = scopeLogs.some((sl) => {
-        const sc = (sl as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
-        return Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0);
-      });
-      const hasRecords = scopeLogs.some((sl) => asArray<LogRecordView>(sl.logRecords).some((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0));
       if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
-      if (hasScopeAttrs) tabs.push({ id: "loc-scopes", label: "Scopes" });
-      if (hasRecords) tabs.push({ id: "loc-records", label: "Log records" });
+      scopeLogs.forEach((sl, i) => {
+        const sc = (sl as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
+        const scopeHasAttrs = Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0);
+        const records = asArray<LogRecordView>(sl.logRecords);
+        const recsWithAttrs = records.filter((lr) => Array.isArray(lr.attributes) && lr.attributes.length > 0);
+        if (scopeHasAttrs || recsWithAttrs.length > 0) tabs.push({ id: `loc-log-scope-${i + 1}`, label: `Scope ${i + 1}` });
+        recsWithAttrs.forEach((lr, j) => {
+          const label = lr.severityText ?? `Record ${i + 1}.${j + 1}`;
+          tabs.push({ id: `loc-record-${i}-${j}`, label });
+        });
+      });
     } else if (signal === "metrics") {
       const doc = parsed as MetricsDocView;
       const rms = asArray<ResourceMetricsView>(doc.resourceMetrics);
       const rm0 = rms[0] as unknown as { resource?: { attributes?: AttributeKV[] }; scopeMetrics?: ScopeMetricsView[] };
       const hasResource = Array.isArray(rm0?.resource?.attributes) && (rm0.resource!.attributes!.length > 0);
       const scopeMetrics = asArray<ScopeMetricsView>(rm0?.scopeMetrics);
-      const hasScopes = scopeMetrics.some((sm) => {
-        const sc = (sm as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
-        const metrics = (sm as unknown as { metrics?: MetricView[] }).metrics;
-        return (Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0)) || (asArray<MetricView>(metrics).length > 0);
-      });
-      const hasDatapoints = scopeMetrics.some((sm) => asArray<MetricView>((sm as unknown as { metrics?: MetricView[] }).metrics).some((m) => metricDatapointsOf(m).length > 0));
       if (hasResource) tabs.push({ id: "loc-resource", label: "Resource" });
-      if (hasScopes) tabs.push({ id: "loc-scopes", label: "Scopes" });
-      if (hasDatapoints) tabs.push({ id: "loc-datapoints", label: "Datapoints" });
+      scopeMetrics.forEach((sm, i) => {
+        const sc = (sm as unknown as { scope?: { attributes?: AttributeKV[] } }).scope;
+        const scopeHasAttrs = Array.isArray(sc?.attributes) && (sc!.attributes!.length > 0);
+        const metrics = asArray<MetricView>((sm as unknown as { metrics?: MetricView[] }).metrics);
+        const hasAnyDps = metrics.some((m) => metricDatapointsOf(m).length > 0);
+        if (scopeHasAttrs || hasAnyDps) tabs.push({ id: `loc-metric-scope-${i + 1}`, label: `Scope ${i + 1}` });
+        metrics.forEach((m, mi) => {
+          const dps = metricDatapointsOf(m);
+          dps.forEach((_, di) => tabs.push({ id: `loc-dp-${i}-${mi}-${di}`, label: `Datapoint ${di + 1}` }));
+        });
+      });
     }
   } catch {}
   return tabs;
